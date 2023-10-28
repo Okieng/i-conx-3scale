@@ -23,7 +23,7 @@ public class Operator extends javax.swing.JFrame {
     public Operator() {
         initComponents();
         try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "username", "password");
+            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
             String query = "SELECT * FROM operator";
             Statement statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery(query);
@@ -72,7 +72,6 @@ public class Operator extends javax.swing.JFrame {
         namaOperatorTextField = new javax.swing.JTextField();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
-        setPreferredSize(new java.awt.Dimension(1280, 720));
 
         jPanel1.setBackground(new java.awt.Color(25, 38, 85));
 
@@ -116,7 +115,7 @@ public class Operator extends javax.swing.JFrame {
 
             },
             new String [] {
-                "Nomor", "Kode Barang", "Nama Barang", "Keterangan"
+                "Nomor", "Username", "Password", "Nama Operator"
             }
         ));
         jTable1.setRowHeight(50);

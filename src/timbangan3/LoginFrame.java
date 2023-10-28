@@ -141,7 +141,7 @@ public class LoginFrame extends javax.swing.JFrame {
         String password = new String(passwordChars);
 
                     try {
-        java.sql.Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/gsw", "root", "");
+        java.sql.Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
 
         // Cek apakah login sebagai supervisor atau admin
         if (username.equals("supervisor") && password.equals("1234")) {

@@ -30,12 +30,12 @@ public class Barang extends javax.swing.JFrame {
             Statement statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery(query);
             DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-
+            editButton.setEnabled(false);
+            deleteButton.setEnabled(false);
             // Cek peran (role) pengguna yang telah login
             User loggedInUser = UserSession.getLoggedInUser();
             if (loggedInUser != null) {
                 String role = loggedInUser.getRole();
-
                 // Sesuaikan tampilan berdasarkan peran pengguna
                 if ("supervisor".equals(role)) {
                     // Operator memiliki akses ke fitur tertentu
@@ -50,10 +50,7 @@ public class Barang extends javax.swing.JFrame {
                     deleteButton.setVisible(false);
                 }        
             }
-            
-            
             int rowNum = 1; // Nomor urut awal
-
             while (resultSet.next()) {
                 Object[] row = {
                     rowNum,
@@ -64,13 +61,11 @@ public class Barang extends javax.swing.JFrame {
                 model.addRow(row);
                 rowNum++;
             }
-
             connection.close();
         } catch (SQLException ex) {
             ex.printStackTrace();
         }
     }
-
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -97,6 +92,11 @@ public class Barang extends javax.swing.JFrame {
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
         setBackground(new java.awt.Color(255, 255, 255));
+        addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                formMouseClicked(evt);
+            }
+        });
 
         jPanel1.setBackground(new java.awt.Color(25, 38, 85));
 
@@ -258,7 +258,6 @@ public class Barang extends javax.swing.JFrame {
             JOptionPane.showMessageDialog(null, "Kode barang tidak boleh sama!", "Peringatan", JOptionPane.WARNING_MESSAGE);
             return;
         }
-        
         // Simpan data ke database
         try {
             Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
@@ -272,12 +271,10 @@ public class Barang extends javax.swing.JFrame {
         } catch (SQLException ex) {
             ex.printStackTrace();
         }
-        
         // Refresh tabel dengan memanggil fireTableDataChanged()
         DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
         model.addRow(new Object[]{model.getRowCount() + 1, kodeBarang, namaBarang, keteranganBarang});
         model.fireTableDataChanged();
-
         // Reset input fields
         kodeBarangTextField.setText("");
         namaBarangTextField.setText("");
@@ -302,12 +299,10 @@ public class Barang extends javax.swing.JFrame {
             String kodeBarang = kodeBarangTextField.getText();
             String namaBarang = namaBarangTextField.getText();
             String keteranganBarang = keteranganTextArea.getText();
-
             if (kodeBarang.isEmpty() || namaBarang.isEmpty() || keteranganBarang.isEmpty()) {
                 JOptionPane.showMessageDialog(null, "Kode barang dan nama barang harus diisi!", "Peringatan", JOptionPane.WARNING_MESSAGE);
                 return; // Tidak melanjutkan simpan data
             }
-            
             try {
                 Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
                 String query = "UPDATE barang SET kode_barang=?, nama_barang=?, keterangan=? WHERE kode_barang=?";
@@ -370,6 +365,8 @@ public class Barang extends javax.swing.JFrame {
 
     private void jTable1MouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_jTable1MouseClicked
         // TODO add your handling code here:
+        editButton.setEnabled(true);
+        deleteButton.setEnabled(true);
         if (evt.getClickCount() == 1) {
             int selectedRow = jTable1.getSelectedRow();
             if (selectedRow >= 0) {
@@ -383,6 +380,14 @@ public class Barang extends javax.swing.JFrame {
             }
         }
     }//GEN-LAST:event_jTable1MouseClicked
+
+    private void formMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_formMouseClicked
+        // TODO add your handling code here:
+        kodeBarangTextField.setText("");
+        namaBarangTextField.setText("");
+        keteranganTextArea.setText("");
+        jTable1.clearSelection();
+    }//GEN-LAST:event_formMouseClicked
 
     /**
      * @param args the command line arguments
