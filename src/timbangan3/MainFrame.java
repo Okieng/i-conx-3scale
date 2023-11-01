@@ -5,6 +5,7 @@
 package timbangan3;
 
 import com.fazecast.jSerialComm.SerialPort;
+import java.awt.Color;
 import java.awt.Desktop;
 import java.io.BufferedReader;
 import java.io.File;
@@ -56,19 +57,30 @@ public class MainFrame extends javax.swing.JFrame {
      */
     public MainFrame() {
         initComponents();
-        tableModel = new DefaultTableModel(new Object[][]{}, new String[]{"No", "Timbangan A", "Timbangan B", "Timbangan C", "Nama Barang", "Nama Barang Timbangan 2" , "Nama Barang Timbangan 3", "Tanggal", "Jam"});
+        tableModel = new DefaultTableModel(new Object[][]{}, new String[]{"No", "Gross", "Tare", "Netto", "Nama Barang", "Tanggal" , "Jam", "Sumber"});
         jTable1.setModel(tableModel);
         printerPort = SerialPort.getCommPort("COM4");
-        loadKodeBarangToComboBox();
-        loadKodeBarangToComboBox2();
-        loadKodeBarangToComboBox3();            
         String loggedInUsername = UserSession.getLoggedInUser().getUsername();
-        String ipAddress = "192.168.10.113";
+        String ipAddress = "192.168.10.112";
         int port = 8888;
         titleLabel.setText("Welcome, " + loggedInUsername); // titleLabel adalah contoh komponen GUI yang menampilkan nama pengguna
         try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
-            String query = "SELECT * FROM berat WHERE tanggal = CURDATE();";
+            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "");
+            String query = "SELECT gross1, tare1, net1, nama_barang, tanggal, jam, 'Timbangan 1' AS sumber\n" +
+            "FROM berat\n" +
+            "WHERE tanggal = CURDATE()\n" +
+            "\n" +
+            "UNION ALL\n" +
+            "\n" +
+            "SELECT gross2, tare2, net2, nama_barang, tanggal, jam, 'Timbangan 2' AS sumber\n" +
+            "FROM berat2\n" +
+            "WHERE tanggal = CURDATE()\n" +
+            "\n" +
+            "UNION ALL\n" +
+            "\n" +
+            "SELECT gross3, tare3, net3, nama_barang, tanggal, jam, 'Timbangan 3' AS sumber\n" +
+            "FROM berat3\n" +
+            "WHERE tanggal = CURDATE();";
             Statement statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery(query);
             DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
@@ -96,59 +108,83 @@ public class MainFrame extends javax.swing.JFrame {
                 @Override
                 public void run() {
                     try (Socket socket = new Socket(ipAddress, port);
-     BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
 
-    String grossValue = null;
-    String tareValue = null;
-    String netValue = null;
+                        String grossValue = null;
+                        String tareValue = null;
+                        String netValue = null; 
+                        LocalDateTime currentDateTime = LocalDateTime.now();
+                        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                        String tanggal = currentDateTime.format(dateFormatter);
+                        String jam = currentDateTime.format(timeFormatter);
+                        String line;
+                        
+                        
+                        while ((line = reader.readLine()) != null) {
+                            line = line.trim();
+                            if (line.startsWith("GROSS")) {
+                                grossValue = extractValue(line);
+                            } else if (line.startsWith("TARE")) {
+                                tareValue = extractValue(line);
+                            } else if (line.startsWith("NET")) {
+                                netValue = extractValue(line);
+                            }
+                        String namaBarang = namaBarangTextField.getText();
+                            if (grossValue != null && tareValue != null && netValue != null && namaBarang !=null) {
+                                // Anda telah mengumpulkan semua nilai yang diperlukan
+                                // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                                System.out.println("GROSS Value: " + grossValue);
+                                grossTextField.setText(grossValue);
+                                System.out.println("TARE Value: " + tareValue);
+                                tareTextField.setText(tareValue);
+                                System.out.println("NET Value: " + netValue);
+                                System.out.println("Nama Barang: " + namaBarang);
+                                receivedTimbanganA.setText(netValue);
+                                grossTextField2.setText(grossValue);
+                                tareTextField2.setText(tareValue);
+                                receivedTimbanganB.setText(netValue);
 
-    String line;
-    while ((line = reader.readLine()) != null) {
-        line = line.trim();
-        if (line.startsWith("GROSS")) {
-            grossValue = extractValue(line);
-        } else if (line.startsWith("TARE")) {
-            tareValue = extractValue(line);
-        } else if (line.startsWith("NET")) {
-            netValue = extractValue(line);
-        }
-
-        if (grossValue != null && tareValue != null && netValue != null) {
-            // Anda telah mengumpulkan semua nilai yang diperlukan
-            // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
-            System.out.println("GROSS Value: " + grossValue);
-            grossTextField.setText(grossValue);
-            System.out.println("TARE Value: " + tareValue);
-            tareTextField.setText(tareValue);
-            System.out.println("NET Value: " + netValue);
-            receivedTimbanganA.setText(netValue);
-            grossTextField2.setText(grossValue);
-            tareTextField2.setText(tareValue);
-            receivedTimbanganB.setText(netValue);
-
-            // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
-            try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
-                String query = "INSERT INTO berat (gross1, tare1, net1) VALUES (?, ?, ?)";
-                try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-                    preparedStatement.setString(1, grossValue);
-                    preparedStatement.setString(2, tareValue);
-                    preparedStatement.setString(3, netValue);
-                    preparedStatement.executeUpdate();
-                    System.out.println("Data berhasil disimpan ke database.");
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-                System.out.println("Error saving data to database: " + e.getMessage());
-            }
-            // Reset nilai-nilai untuk pengumpulan data selanjutnya
-            grossValue = null;
-            tareValue = null;
-            netValue = null;
-        }
-    }
-} catch (Exception e) {
-    e.printStackTrace();
-}
+                                // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
+                                    String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?)";
+                                    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                        preparedStatement.setString(1, grossValue);
+                                        preparedStatement.setString(2, tareValue);
+                                        preparedStatement.setString(3, netValue);
+                                        preparedStatement.setString(4, namaBarang);
+                                        preparedStatement.setString(5, getCurrentDate());
+                                        preparedStatement.setString(6, getCurrentTime());
+                                        preparedStatement.executeUpdate();
+                                        System.out.println("Data berhasil disimpan ke database.");
+                                        
+                                        // Setelah data disimpan, tambahkan baris baru ke tabel
+                                        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                        Object[] newRow = {
+                                            model.getRowCount() + 1,
+                                            grossValue,
+                                            tareValue,
+                                            netValue,
+                                            namaBarang,
+                                            getCurrentDate(),
+                                            getCurrentTime(),
+                                            "Timbangan 1"
+                                        };
+                                        model.addRow(newRow);
+                                    }
+                                } catch (SQLException e) {
+                                    e.printStackTrace();
+                                    System.out.println("Error saving data to database: " + e.getMessage());
+                                }
+                                // Reset nilai-nilai untuk pengumpulan data selanjutnya
+                                grossValue = null;
+                                tareValue = null;
+                                netValue = null;
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
                 }
             });
             int rowNum = 1; // Nomor urut awal
@@ -156,14 +192,13 @@ public class MainFrame extends javax.swing.JFrame {
             while (resultSet.next()) {
                 Object[] row = {
                     rowNum,
-                    resultSet.getString("timbangan1"),
-                    resultSet.getString("timbangan2"),
-                    resultSet.getString("timbangan3"),
+                    resultSet.getString("gross1"),
+                    resultSet.getString("tare1"),
+                    resultSet.getString("net1"),
                     resultSet.getString("nama_barang"),
-                    resultSet.getString("nama_barang2"),
-                    resultSet.getString("nama_barang3"),
                     resultSet.getString("tanggal"),
                     resultSet.getString("jam"),
+                    resultSet.getString("sumber"),
                 }; 
                 model.addRow(row);
                 rowNum++;
@@ -182,11 +217,6 @@ public class MainFrame extends javax.swing.JFrame {
         return null; // Return null jika parsing gagal
     }
 
-    public void tampildata(){
-        
-
-                
-    }
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -228,12 +258,12 @@ public class MainFrame extends javax.swing.JFrame {
         jLabel5 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
         exportButton = new javax.swing.JButton();
-        jComboBox1 = new javax.swing.JComboBox<>();
         jComboBox2 = new javax.swing.JComboBox<>();
         jComboBox3 = new javax.swing.JComboBox<>();
         jDateChooser1 = new com.toedter.calendar.JDateChooser();
         searchButton = new javax.swing.JButton();
         resetButton = new javax.swing.JButton();
+        namaBarangTextField = new javax.swing.JTextField();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -422,15 +452,12 @@ public class MainFrame extends javax.swing.JFrame {
                 .addComponent(jSeparator2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(jLabel7)
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addComponent(jLabel7)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 206, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 187, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(43, 43, 43)
                         .addComponent(jLabel9)))
-                .addGap(52, 52, 52))
+                .addGap(113, 113, 113))
         );
         jPanel2Layout.setVerticalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -512,6 +539,9 @@ public class MainFrame extends javax.swing.JFrame {
             public void mouseEntered(java.awt.event.MouseEvent evt) {
                 saveButtonMouseEntered(evt);
             }
+            public void mouseExited(java.awt.event.MouseEvent evt) {
+                saveButtonMouseExited(evt);
+            }
         });
         saveButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -541,9 +571,6 @@ public class MainFrame extends javax.swing.JFrame {
             }
         });
 
-        jComboBox1.setEditable(true);
-        jComboBox1.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
-
         jComboBox2.setEditable(true);
         jComboBox2.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
 
@@ -572,10 +599,10 @@ public class MainFrame extends javax.swing.JFrame {
             .addGroup(layout.createSequentialGroup()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(layout.createSequentialGroup()
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel2)
-                            .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(303, 303, 303)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(namaBarangTextField))
+                        .addGap(312, 312, 312)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(jLabel5)
                             .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
@@ -619,17 +646,17 @@ public class MainFrame extends javax.swing.JFrame {
                 .addGap(18, 18, 18)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(layout.createSequentialGroup()
-                        .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox1, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(layout.createSequentialGroup()
-                        .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(layout.createSequentialGroup()
                         .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addComponent(jComboBox3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(jComboBox2, javax.swing.GroupLayout.DEFAULT_SIZE, 40, Short.MAX_VALUE)
+                            .addComponent(namaBarangTextField))))
                 .addGap(18, 18, 18)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(saveButton, javax.swing.GroupLayout.PREFERRED_SIZE, 38, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -642,6 +669,7 @@ public class MainFrame extends javax.swing.JFrame {
 
     private void saveButtonMouseEntered(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_saveButtonMouseEntered
         // TODO add your handling code here:
+        saveButton.setBackground(new java.awt.Color(216, 213, 147));
     }//GEN-LAST:event_saveButtonMouseEntered
 
     private void saveButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_saveButtonActionPerformed
@@ -649,7 +677,7 @@ public class MainFrame extends javax.swing.JFrame {
         String receivedData = receivedTimbanganA.getText().trim();
         String receivedData2 = receivedTimbanganB.getText().trim();
         String receivedData3 = receivedTimbanganC.getText().trim();
-        String namaBarang = (String) jComboBox1.getSelectedItem(); 
+        String namaBarang = namaBarangTextField.getText(); 
         String namaBarang2 = (String) jComboBox2.getSelectedItem(); 
         String namaBarang3 = (String) jComboBox3.getSelectedItem(); 
 
@@ -687,7 +715,6 @@ public class MainFrame extends javax.swing.JFrame {
                 e.printStackTrace();
                 System.out.println("Error saving data to database: " + e.getMessage());
             }
-            jComboBox1.setSelectedIndex(1);
     }//GEN-LAST:event_saveButtonActionPerformed
 
     private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
@@ -770,11 +797,27 @@ public class MainFrame extends javax.swing.JFrame {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         String formattedDate = sdf.format(selectedDate);
 
-        String query = "SELECT * FROM berat WHERE tanggal = ?";
+        String query = "SELECT gross1, tare1, net1, nama_barang, tanggal, jam, 'Timbangan 1' AS sumber\n" +
+        "FROM berat\n" +
+        "WHERE tanggal = ?\n" +
+        "\n" +
+        "UNION ALL\n" +
+        "\n" +
+        "SELECT gross2, tare2, net2, nama_barang, tanggal, jam, 'Timbangan 2' AS sumber\n" +
+        "FROM berat2\n" +
+        "WHERE tanggal = ?\n" +
+        "\n" +
+        "UNION ALL\n" +
+        "\n" +
+        "SELECT gross3, tare3, net3, nama_barang, tanggal, jam, 'Timbangan 3' AS sumber\n" +
+        "FROM berat3\n" +
+        "WHERE tanggal = ?";
 
-        try (Connection connection = DriverManager.getConnection(DB_URL, USERNAME, PASSWORD);
+        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "");
              PreparedStatement preparedStatement = connection.prepareStatement(query)) {
             preparedStatement.setString(1, formattedDate);
+            preparedStatement.setString(2, formattedDate);
+            preparedStatement.setString(3, formattedDate);
             ResultSet resultSet = preparedStatement.executeQuery();
 
             // Proses hasil pencarian (misalnya menampilkan data dalam tabel)
@@ -785,14 +828,13 @@ public class MainFrame extends javax.swing.JFrame {
                 int rowNum = tableModel.getRowCount() + 1;
                 Object[] row = {
                     rowNum,
-                    resultSet.getString("timbangan1"),
-                    resultSet.getString("timbangan2"),
-                    resultSet.getString("timbangan3"),
+                    resultSet.getString("gross1"),
+                    resultSet.getString("tare1"),
+                    resultSet.getString("net1"),
                     resultSet.getString("nama_barang"),
-                    resultSet.getString("nama_barang2"),
-                    resultSet.getString("nama_barang3"),
                     resultSet.getString("tanggal"),
                     resultSet.getString("jam"),
+                    resultSet.getString("sumber"),
                 };
                 model.addRow(row);
             }
@@ -837,6 +879,10 @@ public class MainFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_resetButtonActionPerformed
 
+    private void saveButtonMouseExited(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_saveButtonMouseExited
+        saveButton.setBackground(new java.awt.Color(243, 240, 202));
+    }//GEN-LAST:event_saveButtonMouseExited
+
     public void openFile(String file){
         try{
             File path = new File(file);
@@ -844,72 +890,6 @@ public class MainFrame extends javax.swing.JFrame {
         }catch(IOException ioe){
             System.out.println(ioe);
         }
-    }
-    
-    private void loadKodeBarangToComboBox() {
-    DefaultComboBoxModel<String> comboBoxModel = new DefaultComboBoxModel<>();
-
-        try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
-            String query = "SELECT nama_barang FROM barang";
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(query);
-            comboBoxModel.addElement("");
-            while (resultSet.next()) {
-                String namaBarang = resultSet.getString("nama_barang");
-                comboBoxModel.addElement(namaBarang);
-            }
-
-            connection.close();
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-
-        jComboBox1.setModel(comboBoxModel);
-    }
-    
-    private void loadKodeBarangToComboBox2() {
-    DefaultComboBoxModel<String> comboBoxModel = new DefaultComboBoxModel<>();
-
-        try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
-            String query = "SELECT nama_barang FROM barang";
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(query);
-            comboBoxModel.addElement("");
-            while (resultSet.next()) {
-                String namaBarang = resultSet.getString("nama_barang");
-                comboBoxModel.addElement(namaBarang);
-            }
-
-            connection.close();
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-
-        jComboBox2.setModel(comboBoxModel);
-    }
-    
-    private void loadKodeBarangToComboBox3() {
-    DefaultComboBoxModel<String> comboBoxModel = new DefaultComboBoxModel<>();
-
-        try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
-            String query = "SELECT nama_barang FROM barang";
-            Statement statement = connection.createStatement();
-            ResultSet resultSet = statement.executeQuery(query);
-            comboBoxModel.addElement("");
-            while (resultSet.next()) {
-                String namaBarang = resultSet.getString("nama_barang");
-                comboBoxModel.addElement(namaBarang);
-            }
-
-            connection.close();
-        } catch (SQLException ex) {
-            ex.printStackTrace();
-        }
-
-        jComboBox3.setModel(comboBoxModel);
     }
     
     private void printData(String receivedData) {
@@ -1014,7 +994,6 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JButton jButton1;
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton3;
-    private javax.swing.JComboBox<String> jComboBox1;
     private javax.swing.JComboBox<String> jComboBox2;
     private javax.swing.JComboBox<String> jComboBox3;
     private com.toedter.calendar.JDateChooser jDateChooser1;
@@ -1037,6 +1016,7 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JSeparator jSeparator1;
     private javax.swing.JSeparator jSeparator2;
     private javax.swing.JTable jTable1;
+    private javax.swing.JTextField namaBarangTextField;
     private javax.swing.JLabel receivedTimbanganA;
     private javax.swing.JLabel receivedTimbanganB;
     private javax.swing.JLabel receivedTimbanganC;
