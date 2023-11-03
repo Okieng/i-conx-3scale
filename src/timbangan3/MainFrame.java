@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -26,7 +27,9 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.swing.DefaultComboBoxModel;
@@ -52,6 +55,9 @@ public class MainFrame extends javax.swing.JFrame {
     private LocalDate lastUsedDate;
     private SerialPort serialPort;
     private SerialPort printerPort; // Deklarasi port serial printer
+    private String ipTimbangan1;
+    private String ipTimbangan2;
+    private String ipTimbangan3;
     /**
      * Creates new form MainFrame
      */
@@ -59,9 +65,26 @@ public class MainFrame extends javax.swing.JFrame {
         initComponents();
         tableModel = new DefaultTableModel(new Object[][]{}, new String[]{"No", "Gross", "Tare", "Netto", "Nama Barang", "Tanggal" , "Jam", "Sumber"});
         jTable1.setModel(tableModel);
-        printerPort = SerialPort.getCommPort("COM4");
         String loggedInUsername = UserSession.getLoggedInUser().getUsername();
-        String ipAddress = "192.168.10.112";
+        ConfigFrame ipFrame = new ConfigFrame();
+        List<String> ipAddresses = ipFrame.getIpAddressesFromDatabase();
+        if (ipAddresses.size() == 3) {
+            ipTimbangan1 = ipAddresses.get(0);
+            ipTimbangan2 = ipAddresses.get(1);
+            ipTimbangan3 = ipAddresses.get(2);
+            // Cek koneksi ke IP Timbangan 1
+            if (isConnected(ipTimbangan1, 8888)) {
+                // Timbangan 1 terhubung, lakukan tindakan yang sesuai
+                // Misalnya, tampilkan pesan sukses
+                JOptionPane.showMessageDialog(this, "Timbangan 1 terhubung ke IP: " + ipTimbangan1, "Koneksi Sukses", JOptionPane.INFORMATION_MESSAGE);
+            } else {
+                // Timbangan 1 tidak terhubung, tampilkan pesan kesalahan
+                JOptionPane.showMessageDialog(this, "Timbangan 1 tidak dapat terhubung ke IP: " + ipTimbangan1, "Koneksi Gagal", JOptionPane.ERROR_MESSAGE);
+            }
+        } else {
+            JOptionPane.showMessageDialog(this, "Pastikan semua IP terisi!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+        }
+
         int port = 8888;
         titleLabel.setText("Welcome, " + loggedInUsername); // titleLabel adalah contoh komponen GUI yang menampilkan nama pengguna
         try {
@@ -107,7 +130,7 @@ public class MainFrame extends javax.swing.JFrame {
                 executor.execute(new Runnable() {
                 @Override
                 public void run() {
-                    try (Socket socket = new Socket(ipAddress, port);
+                    try (Socket socket = new Socket(ipTimbangan1, port);
                         BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
 
                         String grossValue = null;
@@ -141,9 +164,6 @@ public class MainFrame extends javax.swing.JFrame {
                                 System.out.println("NET Value: " + netValue);
                                 System.out.println("Nama Barang: " + namaBarang);
                                 receivedTimbanganA.setText(netValue);
-                                grossTextField2.setText(grossValue);
-                                tareTextField2.setText(tareValue);
-                                receivedTimbanganB.setText(netValue);
 
                                 // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
                                 try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
@@ -175,6 +195,171 @@ public class MainFrame extends javax.swing.JFrame {
                                 } catch (SQLException e) {
                                     e.printStackTrace();
                                     System.out.println("Error saving data to database: " + e.getMessage());
+                                    
+                                }
+                                // Reset nilai-nilai untuk pengumpulan data selanjutnya
+                                grossValue = null;
+                                tareValue = null;
+                                netValue = null;
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+                
+                executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try (Socket socket = new Socket(ipTimbangan2, port);
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+                        String grossValue = null;
+                        String tareValue = null;
+                        String netValue = null; 
+                        LocalDateTime currentDateTime = LocalDateTime.now();
+                        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                        String tanggal = currentDateTime.format(dateFormatter);
+                        String jam = currentDateTime.format(timeFormatter);
+                        String line;
+                        
+                        
+                        while ((line = reader.readLine()) != null) {
+                            line = line.trim();
+                            if (line.startsWith("GROSS")) {
+                                grossValue = extractValue(line);
+                            } else if (line.startsWith("TARE")) {
+                                tareValue = extractValue(line);
+                            } else if (line.startsWith("NET")) {
+                                netValue = extractValue(line);
+                            }
+                        String namaBarang2 = namaBarangTextField2.getText();
+                            if (grossValue != null && tareValue != null && netValue != null && namaBarang2 !=null) {
+                                // Anda telah mengumpulkan semua nilai yang diperlukan
+                                // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                                System.out.println("GROSS Value: " + grossValue);
+                                grossTextField2.setText(grossValue);
+                                System.out.println("TARE Value: " + tareValue);
+                                tareTextField2.setText(tareValue);
+                                System.out.println("NET Value: " + netValue);
+                                System.out.println("Nama Barang: " + namaBarang2);
+                                receivedTimbanganB.setText(netValue);
+
+                                // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
+                                    String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?)";
+                                    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                        preparedStatement.setString(1, grossValue);
+                                        preparedStatement.setString(2, tareValue);
+                                        preparedStatement.setString(3, netValue);
+                                        preparedStatement.setString(4, namaBarang2);
+                                        preparedStatement.setString(5, getCurrentDate());
+                                        preparedStatement.setString(6, getCurrentTime());
+                                        preparedStatement.executeUpdate();
+                                        System.out.println("Data berhasil disimpan ke database.");
+                                        
+                                        // Setelah data disimpan, tambahkan baris baru ke tabel
+                                        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                        Object[] newRow = {
+                                            model.getRowCount() + 1,
+                                            grossValue,
+                                            tareValue,
+                                            netValue,
+                                            namaBarang2,
+                                            getCurrentDate(),
+                                            getCurrentTime(),
+                                            "Timbangan 2"
+                                        };
+                                        model.addRow(newRow);
+                                    }
+                                } catch (SQLException e) {
+                                    e.printStackTrace();
+                                    System.out.println("Error saving data to database: " + e.getMessage());
+                                    
+                                }
+                                // Reset nilai-nilai untuk pengumpulan data selanjutnya
+                                grossValue = null;
+                                tareValue = null;
+                                netValue = null;
+                            }
+                        }
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
+                
+                executor.execute(new Runnable() {
+                @Override
+                public void run() {
+                    try (Socket socket = new Socket(ipTimbangan3, port);
+                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+
+                        String grossValue = null;
+                        String tareValue = null;
+                        String netValue = null; 
+                        LocalDateTime currentDateTime = LocalDateTime.now();
+                        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                        String tanggal = currentDateTime.format(dateFormatter);
+                        String jam = currentDateTime.format(timeFormatter);
+                        String line;
+                        
+                        
+                        while ((line = reader.readLine()) != null) {
+                            line = line.trim();
+                            if (line.startsWith("GROSS")) {
+                                grossValue = extractValue(line);
+                            } else if (line.startsWith("TARE")) {
+                                tareValue = extractValue(line);
+                            } else if (line.startsWith("NET")) {
+                                netValue = extractValue(line);
+                            }
+                        String namaBarang3 = namaBarangTextField3.getText();
+                            if (grossValue != null && tareValue != null && netValue != null && namaBarang3 !=null) {
+                                // Anda telah mengumpulkan semua nilai yang diperlukan
+                                // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                                System.out.println("GROSS Value: " + grossValue);
+                                grossTextField3.setText(grossValue);
+                                System.out.println("TARE Value: " + tareValue);
+                                tareTextField3.setText(tareValue);
+                                System.out.println("NET Value: " + netValue);
+                                System.out.println("Nama Barang: " + namaBarang3);
+                                receivedTimbanganC.setText(netValue);
+
+                                // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
+                                    String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?)";
+                                    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                        preparedStatement.setString(1, grossValue);
+                                        preparedStatement.setString(2, tareValue);
+                                        preparedStatement.setString(3, netValue);
+                                        preparedStatement.setString(4, namaBarang3);
+                                        preparedStatement.setString(5, getCurrentDate());
+                                        preparedStatement.setString(6, getCurrentTime());
+                                        preparedStatement.executeUpdate();
+                                        System.out.println("Data berhasil disimpan ke database.");
+                                        
+                                        // Setelah data disimpan, tambahkan baris baru ke tabel
+                                        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                        Object[] newRow = {
+                                            model.getRowCount() + 1,
+                                            grossValue,
+                                            tareValue,
+                                            netValue,
+                                            namaBarang3,
+                                            getCurrentDate(),
+                                            getCurrentTime(),
+                                            "Timbangan 3"
+                                        };
+                                        model.addRow(newRow);
+                                    }
+                                } catch (SQLException e) {
+                                    e.printStackTrace();
+                                    System.out.println("Error saving data to database: " + e.getMessage());
+                                    
                                 }
                                 // Reset nilai-nilai untuk pengumpulan data selanjutnya
                                 grossValue = null;
@@ -231,6 +416,7 @@ public class MainFrame extends javax.swing.JFrame {
         jButton2 = new javax.swing.JButton();
         jButton3 = new javax.swing.JButton();
         titleLabel = new javax.swing.JLabel();
+        jButton4 = new javax.swing.JButton();
         jPanel2 = new javax.swing.JPanel();
         jSeparator1 = new javax.swing.JSeparator();
         jSeparator2 = new javax.swing.JSeparator();
@@ -251,19 +437,22 @@ public class MainFrame extends javax.swing.JFrame {
         jLabel13 = new javax.swing.JLabel();
         tareTextField2 = new javax.swing.JLabel();
         grossTextField2 = new javax.swing.JLabel();
+        tareTextField3 = new javax.swing.JLabel();
+        grossTextField3 = new javax.swing.JLabel();
+        jLabel14 = new javax.swing.JLabel();
+        jLabel15 = new javax.swing.JLabel();
         jScrollPane1 = new javax.swing.JScrollPane();
         jTable1 = new javax.swing.JTable();
         jLabel2 = new javax.swing.JLabel();
-        saveButton = new javax.swing.JButton();
         jLabel5 = new javax.swing.JLabel();
         jLabel8 = new javax.swing.JLabel();
         exportButton = new javax.swing.JButton();
-        jComboBox2 = new javax.swing.JComboBox<>();
-        jComboBox3 = new javax.swing.JComboBox<>();
         jDateChooser1 = new com.toedter.calendar.JDateChooser();
         searchButton = new javax.swing.JButton();
         resetButton = new javax.swing.JButton();
         namaBarangTextField = new javax.swing.JTextField();
+        namaBarangTextField2 = new javax.swing.JTextField();
+        namaBarangTextField3 = new javax.swing.JTextField();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -303,6 +492,16 @@ public class MainFrame extends javax.swing.JFrame {
         titleLabel.setFont(new java.awt.Font("Arial", 0, 24)); // NOI18N
         titleLabel.setForeground(new java.awt.Color(255, 255, 255));
 
+        jButton4.setBackground(new java.awt.Color(243, 240, 202));
+        jButton4.setFont(new java.awt.Font("Arial", 1, 12)); // NOI18N
+        jButton4.setText("IP Setting");
+        jButton4.setBorder(null);
+        jButton4.addActionListener(new java.awt.event.ActionListener() {
+            public void actionPerformed(java.awt.event.ActionEvent evt) {
+                jButton4ActionPerformed(evt);
+            }
+        });
+
         javax.swing.GroupLayout jPanel1Layout = new javax.swing.GroupLayout(jPanel1);
         jPanel1.setLayout(jPanel1Layout);
         jPanel1Layout.setHorizontalGroup(
@@ -310,7 +509,9 @@ public class MainFrame extends javax.swing.JFrame {
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel1Layout.createSequentialGroup()
                 .addGap(16, 16, 16)
                 .addComponent(titleLabel, javax.swing.GroupLayout.PREFERRED_SIZE, 556, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 237, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addComponent(jButton4, javax.swing.GroupLayout.PREFERRED_SIZE, 162, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
                 .addComponent(jButton2, javax.swing.GroupLayout.PREFERRED_SIZE, 162, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
                 .addComponent(jButton1, javax.swing.GroupLayout.PREFERRED_SIZE, 162, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -327,7 +528,8 @@ public class MainFrame extends javax.swing.JFrame {
                     .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                         .addComponent(jButton1, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)
                         .addComponent(jButton2, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)
-                        .addComponent(jButton3, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)))
+                        .addComponent(jButton3, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)
+                        .addComponent(jButton4, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)))
                 .addContainerGap())
         );
 
@@ -372,7 +574,6 @@ public class MainFrame extends javax.swing.JFrame {
         receivedTimbanganC.setBackground(new java.awt.Color(255, 255, 255));
         receivedTimbanganC.setFont(new java.awt.Font("Arial", 0, 48)); // NOI18N
         receivedTimbanganC.setForeground(new java.awt.Color(255, 255, 255));
-        receivedTimbanganC.setText("1234567");
 
         jLabel9.setFont(new java.awt.Font("Arial", 0, 18)); // NOI18N
         jLabel9.setForeground(new java.awt.Color(255, 255, 255));
@@ -406,6 +607,20 @@ public class MainFrame extends javax.swing.JFrame {
         grossTextField2.setFont(new java.awt.Font("Arial", 1, 14)); // NOI18N
         grossTextField2.setForeground(new java.awt.Color(255, 255, 255));
 
+        tareTextField3.setFont(new java.awt.Font("Arial", 1, 14)); // NOI18N
+        tareTextField3.setForeground(new java.awt.Color(255, 255, 255));
+
+        grossTextField3.setFont(new java.awt.Font("Arial", 1, 14)); // NOI18N
+        grossTextField3.setForeground(new java.awt.Color(255, 255, 255));
+
+        jLabel14.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
+        jLabel14.setForeground(new java.awt.Color(255, 255, 255));
+        jLabel14.setText("Gross");
+
+        jLabel15.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
+        jLabel15.setForeground(new java.awt.Color(255, 255, 255));
+        jLabel15.setText("Tare");
+
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
         jPanel2Layout.setHorizontalGroup(
@@ -435,7 +650,7 @@ public class MainFrame extends javax.swing.JFrame {
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel4)
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGap(146, 146, 146)
+                        .addGap(161, 161, 161)
                         .addComponent(receivedTimbanganB, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGap(18, 18, 18)
                         .addComponent(jLabel6))
@@ -448,15 +663,24 @@ public class MainFrame extends javax.swing.JFrame {
                         .addComponent(jLabel12, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                         .addComponent(tareTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 64, Short.MAX_VALUE)
                 .addComponent(jSeparator2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(jLabel7)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 187, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(43, 43, 43)
-                        .addComponent(jLabel9)))
+                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                        .addGroup(jPanel2Layout.createSequentialGroup()
+                            .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 187, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGap(35, 35, 35)
+                            .addComponent(jLabel9))
+                        .addGroup(jPanel2Layout.createSequentialGroup()
+                            .addComponent(jLabel14, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(grossTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGap(54, 54, 54)
+                            .addComponent(jLabel15, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                            .addComponent(tareTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE))))
                 .addGap(113, 113, 113))
         );
         jPanel2Layout.setVerticalGroup(
@@ -480,34 +704,39 @@ public class MainFrame extends javax.swing.JFrame {
                             .addComponent(grossTextField, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
                         .addGap(16, 16, 16))
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addComponent(jLabel4)
                         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel2Layout.createSequentialGroup()
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                                .addComponent(jLabel6)
-                                .addGap(7, 7, 7))
-                            .addGroup(jPanel2Layout.createSequentialGroup()
-                                .addGap(32, 32, 32)
-                                .addComponent(receivedTimbanganB, javax.swing.GroupLayout.PREFERRED_SIZE, 53, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)))
+                                .addComponent(jLabel4)
+                                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(jPanel2Layout.createSequentialGroup()
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                        .addComponent(jLabel6)
+                                        .addGap(7, 7, 7))
+                                    .addGroup(jPanel2Layout.createSequentialGroup()
+                                        .addGap(32, 32, 32)
+                                        .addComponent(receivedTimbanganB, javax.swing.GroupLayout.PREFERRED_SIZE, 53, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
+                                .addGap(0, 0, Short.MAX_VALUE)
+                                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                                    .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 53, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(jLabel9))
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)))
                         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                                 .addComponent(tareTextField2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                                 .addComponent(grossTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
                                 .addComponent(jLabel13))
-                            .addComponent(jLabel12))
+                            .addComponent(jLabel12)
+                            .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                .addComponent(tareTextField3, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(grossTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addComponent(jLabel14))
+                            .addComponent(jLabel15))
                         .addContainerGap(12, Short.MAX_VALUE))))
             .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
                 .addComponent(jLabel7)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addComponent(jLabel9)
-                        .addGap(39, 39, 39))
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGap(36, 36, 36)
-                        .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 53, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))))
+                .addGap(39, 135, Short.MAX_VALUE))
         );
 
         jTable1.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
@@ -531,24 +760,6 @@ public class MainFrame extends javax.swing.JFrame {
         jLabel2.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel2.setText("Nama Barang Timbangan 1");
 
-        saveButton.setBackground(new java.awt.Color(243, 240, 202));
-        saveButton.setFont(new java.awt.Font("Arial", 1, 14)); // NOI18N
-        saveButton.setText("Simpan");
-        saveButton.setBorder(null);
-        saveButton.addMouseListener(new java.awt.event.MouseAdapter() {
-            public void mouseEntered(java.awt.event.MouseEvent evt) {
-                saveButtonMouseEntered(evt);
-            }
-            public void mouseExited(java.awt.event.MouseEvent evt) {
-                saveButtonMouseExited(evt);
-            }
-        });
-        saveButton.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                saveButtonActionPerformed(evt);
-            }
-        });
-
         jLabel5.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel5.setText("Nama Barang Timbangan 2");
 
@@ -571,12 +782,6 @@ public class MainFrame extends javax.swing.JFrame {
             }
         });
 
-        jComboBox2.setEditable(true);
-        jComboBox2.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
-
-        jComboBox3.setEditable(true);
-        jComboBox3.setModel(new javax.swing.DefaultComboBoxModel<>(new String[] { "Item 1", "Item 2", "Item 3", "Item 4" }));
-
         searchButton.setText("Cari Data");
         searchButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
@@ -598,26 +803,6 @@ public class MainFrame extends javax.swing.JFrame {
             .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
             .addGroup(layout.createSequentialGroup()
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(layout.createSequentialGroup()
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(namaBarangTextField))
-                        .addGap(312, 312, 312)
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel5)
-                            .addComponent(jComboBox2, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                            .addGroup(layout.createSequentialGroup()
-                                .addGap(43, 43, 43)
-                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                                    .addComponent(jComboBox3, javax.swing.GroupLayout.PREFERRED_SIZE, 185, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                    .addComponent(jLabel8)))
-                            .addGroup(javax.swing.GroupLayout.Alignment.LEADING, layout.createSequentialGroup()
-                                .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 105, javax.swing.GroupLayout.PREFERRED_SIZE)
-                                .addGap(18, 18, 18)
-                                .addComponent(saveButton, javax.swing.GroupLayout.PREFERRED_SIZE, 105, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                        .addGap(72, 72, 72))
                     .addComponent(jPanel2, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addComponent(jScrollPane1, javax.swing.GroupLayout.Alignment.TRAILING)
                     .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
@@ -628,6 +813,26 @@ public class MainFrame extends javax.swing.JFrame {
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
                         .addComponent(resetButton, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)))
                 .addContainerGap())
+            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, layout.createSequentialGroup()
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                    .addGroup(layout.createSequentialGroup()
+                        .addGap(0, 0, Short.MAX_VALUE)
+                        .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 105, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(namaBarangTextField))
+                        .addGap(312, 312, 312)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                            .addComponent(jLabel5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                            .addComponent(namaBarangTextField2))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 412, Short.MAX_VALUE)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(layout.createSequentialGroup()
+                                .addComponent(jLabel8)
+                                .addGap(9, 9, 9))
+                            .addComponent(namaBarangTextField3))))
+                .addGap(19, 19, 19))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
@@ -642,80 +847,28 @@ public class MainFrame extends javax.swing.JFrame {
                         .addComponent(searchButton, javax.swing.GroupLayout.DEFAULT_SIZE, 34, Short.MAX_VALUE)
                         .addComponent(resetButton, javax.swing.GroupLayout.DEFAULT_SIZE, 34, Short.MAX_VALUE)))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 273, Short.MAX_VALUE)
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 267, Short.MAX_VALUE)
                 .addGap(18, 18, 18)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(layout.createSequentialGroup()
                         .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(jComboBox3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                        .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
                     .addGroup(layout.createSequentialGroup()
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addComponent(jComboBox2, javax.swing.GroupLayout.DEFAULT_SIZE, 40, Short.MAX_VALUE)
-                            .addComponent(namaBarangTextField))))
-                .addGap(18, 18, 18)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                    .addComponent(saveButton, javax.swing.GroupLayout.PREFERRED_SIZE, 38, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 38, javax.swing.GroupLayout.PREFERRED_SIZE))
-                .addGap(16, 16, 16))
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(namaBarangTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addComponent(namaBarangTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 38, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(22, 22, 22))
         );
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
-
-    private void saveButtonMouseEntered(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_saveButtonMouseEntered
-        // TODO add your handling code here:
-        saveButton.setBackground(new java.awt.Color(216, 213, 147));
-    }//GEN-LAST:event_saveButtonMouseEntered
-
-    private void saveButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_saveButtonActionPerformed
-        printerPort.openPort();
-        String receivedData = receivedTimbanganA.getText().trim();
-        String receivedData2 = receivedTimbanganB.getText().trim();
-        String receivedData3 = receivedTimbanganC.getText().trim();
-        String namaBarang = namaBarangTextField.getText(); 
-        String namaBarang2 = (String) jComboBox2.getSelectedItem(); 
-        String namaBarang3 = (String) jComboBox3.getSelectedItem(); 
-
-        // Periksa apakah salah satu field (namaBarang, namaBarang2, namaBarang3) kosong
-            LocalDateTime currentDateTime = LocalDateTime.now();
-            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-            DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
-            String tanggal = currentDateTime.format(dateFormatter);
-            String jam = currentDateTime.format(timeFormatter);
-
-            try (Connection connection = DriverManager.getConnection(DB_URL, USERNAME, PASSWORD)) {
-                String query = "INSERT INTO berat (timbangan1, timbangan2, timbangan3, nama_barang, nama_barang2, nama_barang3, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-                try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-                    preparedStatement.setString(1, receivedData);
-                    preparedStatement.setString(2, receivedData2);
-                    preparedStatement.setString(3, receivedData3);
-                    preparedStatement.setString(4, namaBarang);
-                    preparedStatement.setString(5, namaBarang2);
-                    preparedStatement.setString(6, namaBarang3);
-                    preparedStatement.setString(7, getCurrentDate());
-                    preparedStatement.setString(8, getCurrentTime());
-                    preparedStatement.executeUpdate();
-                    System.out.println("Data berhasil disimpan ke database.");
-
-                    int rowNum = tableModel.getRowCount() + 1;
-                    Object[] newRow = {rowNum, receivedData, receivedData2, receivedData3, namaBarang, namaBarang2, namaBarang3, tanggal, jam};
-                    tableModel.addRow(newRow);
-
-                    int confirm = JOptionPane.showConfirmDialog(null, "Apakah Anda ingin mencetak data ini?", "Konfirmasi Print", JOptionPane.YES_NO_OPTION);
-                    if (confirm == JOptionPane.YES_OPTION) {
-                        printData(receivedData);
-                    }
-                }
-            } catch (SQLException e) {
-                e.printStackTrace();
-                System.out.println("Error saving data to database: " + e.getMessage());
-            }
-    }//GEN-LAST:event_saveButtonActionPerformed
 
     private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
         // TODO add your handling code here:
@@ -724,6 +877,16 @@ public class MainFrame extends javax.swing.JFrame {
         this.dispose();
     }//GEN-LAST:event_jButton1ActionPerformed
 
+    public boolean isConnected(String ipAddress, int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(ipAddress, port), 1000); // Timeout set to 1 second (1000 milliseconds)
+            return true; // Koneksi berhasil
+        } catch (IOException e) {
+            return false; // Gagal terhubung
+        }
+    }
+
+    
     private void exportButtonMouseEntered(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_exportButtonMouseEntered
         // TODO add your handling code here:
     }//GEN-LAST:event_exportButtonMouseEntered
@@ -879,9 +1042,11 @@ public class MainFrame extends javax.swing.JFrame {
         }
     }//GEN-LAST:event_resetButtonActionPerformed
 
-    private void saveButtonMouseExited(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_saveButtonMouseExited
-        saveButton.setBackground(new java.awt.Color(243, 240, 202));
-    }//GEN-LAST:event_saveButtonMouseExited
+    private void jButton4ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton4ActionPerformed
+        ConfigFrame ipFrame = new ConfigFrame();
+        ipFrame.setVisible(true);
+        this.dispose();
+    }//GEN-LAST:event_jButton4ActionPerformed
 
     public void openFile(String file){
         try{
@@ -889,52 +1054,6 @@ public class MainFrame extends javax.swing.JFrame {
             Desktop.getDesktop().open(path);
         }catch(IOException ioe){
             System.out.println(ioe);
-        }
-    }
-    
-    private void printData(String receivedData) {
-        try {
-
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
-            // Extract berat from receivedData
-            String berat = extractBeratFromReceivedData(receivedData);
-
-            int rowCount = tableModel.getRowCount();
-            // Get current date and time
-            LocalDateTime currentDateTime = LocalDateTime.now();
-            DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-            DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
-            String tanggal = currentDateTime.format(dateFormatter);
-            String jam = currentDateTime.format(timeFormatter);
-            String beratValue = berat;
-            String namaBarang = ""; // Inisialisasi nama barang kosong
-
-            // Mendapatkan data dari baris terakhir yang ditambahkan ke tabel
-            if (rowCount > 0) {
-                int lastRowIndex = rowCount - 1;
-                namaBarang = tableModel.getValueAt(lastRowIndex, 1).toString(); // Ambil data dari kolom "Nama Barang" 
-            }
-
-            OutputStream outputStream = printerPort.getOutputStream();
-
-            // Create the string to print
-            String printData = "         PT. Interskala Mandiri Indonesia        "+
-                               "================================================="+
-                               "          No            : " + rowCount + "\r\n"+
-                               "          Nama Barang   : " + namaBarang + "\r\n" +
-                               "          Berat         : " + beratValue + " Kg \r\n" +
-                               "          Tanggal       : " + tanggal + "\r\n" +
-                               "          Jam           : " + jam + "\r\n\n\n\n\n\n\n";
-            // Konversi string ke array byte dan kirim ke printer
-                byte[] dataBytes = printData.getBytes();
-                outputStream.write(dataBytes);
-                outputStream.flush();
-                System.out.println("Data berhasil dikirim ke printer.");
-                outputStream.close();
-            printerPort.closePort();
-
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
     
@@ -991,17 +1110,19 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JButton exportButton;
     private javax.swing.JLabel grossTextField;
     private javax.swing.JLabel grossTextField2;
+    private javax.swing.JLabel grossTextField3;
     private javax.swing.JButton jButton1;
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton3;
-    private javax.swing.JComboBox<String> jComboBox2;
-    private javax.swing.JComboBox<String> jComboBox3;
+    private javax.swing.JButton jButton4;
     private com.toedter.calendar.JDateChooser jDateChooser1;
     private javax.swing.JLabel jLabel1;
     private javax.swing.JLabel jLabel10;
     private javax.swing.JLabel jLabel11;
     private javax.swing.JLabel jLabel12;
     private javax.swing.JLabel jLabel13;
+    private javax.swing.JLabel jLabel14;
+    private javax.swing.JLabel jLabel15;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
@@ -1017,14 +1138,16 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JSeparator jSeparator2;
     private javax.swing.JTable jTable1;
     private javax.swing.JTextField namaBarangTextField;
+    private javax.swing.JTextField namaBarangTextField2;
+    private javax.swing.JTextField namaBarangTextField3;
     private javax.swing.JLabel receivedTimbanganA;
     private javax.swing.JLabel receivedTimbanganB;
     private javax.swing.JLabel receivedTimbanganC;
     private javax.swing.JButton resetButton;
-    private javax.swing.JButton saveButton;
     private javax.swing.JButton searchButton;
     private javax.swing.JLabel tareTextField;
     private javax.swing.JLabel tareTextField2;
+    private javax.swing.JLabel tareTextField3;
     private javax.swing.JLabel titleLabel;
     // End of variables declaration//GEN-END:variables
 }
