@@ -71,9 +71,9 @@ public class ConfigFrame extends javax.swing.JFrame {
         editButton = new javax.swing.JButton();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
-        setPreferredSize(new java.awt.Dimension(1366, 768));
 
         saveButton.setText("Simpan");
+        saveButton.setEnabled(false);
         saveButton.addActionListener(new java.awt.event.ActionListener() {
             public void actionPerformed(java.awt.event.ActionEvent evt) {
                 saveButtonActionPerformed(evt);
@@ -81,13 +81,13 @@ public class ConfigFrame extends javax.swing.JFrame {
         });
 
         jLabel1.setFont(new java.awt.Font("Arial", 0, 18)); // NOI18N
-        jLabel1.setText("ip 1");
+        jLabel1.setText("IP Address Timbangan A");
 
         jLabel2.setFont(new java.awt.Font("Arial", 0, 18)); // NOI18N
-        jLabel2.setText("ip 2");
+        jLabel2.setText("IP Address Timbangan B");
 
         jLabel3.setFont(new java.awt.Font("Arial", 0, 18)); // NOI18N
-        jLabel3.setText("ip 3");
+        jLabel3.setText("IP Address Timbangan C");
 
         jTable1.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
@@ -97,6 +97,11 @@ public class ConfigFrame extends javax.swing.JFrame {
                 "No", "IP Timbangan A", "IP Timbangan B", "IP Timbangan C"
             }
         ));
+        jTable1.addMouseListener(new java.awt.event.MouseAdapter() {
+            public void mouseClicked(java.awt.event.MouseEvent evt) {
+                jTable1MouseClicked(evt);
+            }
+        });
         jScrollPane1.setViewportView(jTable1);
 
         jPanel1.setBackground(new java.awt.Color(25, 38, 85));
@@ -141,7 +146,7 @@ public class ConfigFrame extends javax.swing.JFrame {
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addComponent(jPanel1, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
             .addGroup(layout.createSequentialGroup()
-                .addGap(77, 77, 77)
+                .addGap(65, 65, 65)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(ipAdress1, javax.swing.GroupLayout.PREFERRED_SIZE, 270, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addComponent(jLabel3)
@@ -149,23 +154,22 @@ public class ConfigFrame extends javax.swing.JFrame {
                         .addComponent(ipAdress3, javax.swing.GroupLayout.PREFERRED_SIZE, 270, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(ipAdress2, javax.swing.GroupLayout.PREFERRED_SIZE, 270, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 37, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jLabel1, javax.swing.GroupLayout.PREFERRED_SIZE, 37, javax.swing.GroupLayout.PREFERRED_SIZE))
+                            .addComponent(jLabel1)
+                            .addComponent(jLabel2))
                         .addGroup(layout.createSequentialGroup()
                             .addComponent(saveButton, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
                             .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(editButton, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE))))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 452, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(312, 312, 312))
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 664, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(152, 152, 152))
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addGroup(layout.createSequentialGroup()
                 .addComponent(jPanel1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(200, 200, 200)
+                .addGap(101, 101, 101)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 275, javax.swing.GroupLayout.PREFERRED_SIZE)
                     .addGroup(layout.createSequentialGroup()
                         .addComponent(jLabel1)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
@@ -181,8 +185,9 @@ public class ConfigFrame extends javax.swing.JFrame {
                         .addGap(28, 28, 28)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                             .addComponent(saveButton, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(editButton, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addContainerGap(207, Short.MAX_VALUE))
+                            .addComponent(editButton, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                    .addComponent(jScrollPane1, javax.swing.GroupLayout.PREFERRED_SIZE, 368, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addContainerGap(244, Short.MAX_VALUE))
         );
 
         pack();
@@ -227,8 +232,58 @@ public class ConfigFrame extends javax.swing.JFrame {
     }//GEN-LAST:event_timbangButtonActionPerformed
 
     private void editButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_editButtonActionPerformed
-        // TODO add your handling code here:
+        int selectedRow = jTable1.getSelectedRow();
+        if (selectedRow >= 0) {
+            String ip1 = ipAdress1.getText();
+            String ip2 = ipAdress2.getText();
+            String ip3 = ipAdress3.getText();
+            if (ip1.isEmpty() || ip2.isEmpty() || ip3.isEmpty()) {
+                JOptionPane.showMessageDialog(null, "Kode barang dan nama barang harus diisi!", "Peringatan", JOptionPane.WARNING_MESSAGE);
+                return; // Tidak melanjutkan simpan data
+            }
+            // Mengambil id dari baris terpilih di jTable1
+            String id = jTable1.getValueAt(selectedRow, 0).toString();
+            try {
+                Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
+                String query = "UPDATE config SET port1=?, port2=?, port3=? WHERE id=?";
+                PreparedStatement preparedStatement = connection.prepareStatement(query);
+                preparedStatement.setString(1, ip1);
+                preparedStatement.setString(2, ip2);
+                preparedStatement.setString(3, ip3);
+                preparedStatement.setString(4, id); // Menggunakan kode_barang yang lama untuk identifikasi data yang ingin diubah
+                preparedStatement.executeUpdate();
+                connection.close();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+
+            DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+            model.setValueAt(ip1, selectedRow, 1);
+            model.setValueAt(ip2, selectedRow, 2);
+            model.setValueAt(ip3, selectedRow, 3);
+
+            ipAdress1.setText("");
+            ipAdress2.setText("");
+            ipAdress3.setText("");
+        } else {
+            JOptionPane.showMessageDialog(null, "Pilih baris yang ingin diubah.", "Peringatan", JOptionPane.WARNING_MESSAGE);
+        }
     }//GEN-LAST:event_editButtonActionPerformed
+
+    private void jTable1MouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_jTable1MouseClicked
+        if (evt.getClickCount() == 1) {
+            int selectedRow = jTable1.getSelectedRow();
+            if (selectedRow >= 0) {
+                String ip1 = (String) jTable1.getValueAt(selectedRow, 1);
+                String ip2 = (String) jTable1.getValueAt(selectedRow, 2);
+                String ip3 = (String) jTable1.getValueAt(selectedRow, 3);
+                
+                ipAdress1.setText(ip1);
+                ipAdress2.setText(ip2);
+                ipAdress3.setText(ip3);
+            }
+        }
+    }//GEN-LAST:event_jTable1MouseClicked
 
 public List<String> getIpAddressesFromDatabase() {
     List<String> ipAddresses = new ArrayList<>();

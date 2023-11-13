@@ -7,6 +7,8 @@ package timbangan3;
 import com.fazecast.jSerialComm.SerialPort;
 import java.awt.Color;
 import java.awt.Desktop;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -17,6 +19,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -32,6 +35,10 @@ import java.util.Date;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.swing.DefaultComboBoxModel;
 import javax.swing.JFileChooser;
 import javax.swing.JOptionPane;
@@ -42,6 +49,7 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import javax.swing.Timer;
 
 /**
  *
@@ -58,6 +66,11 @@ public class MainFrame extends javax.swing.JFrame {
     private String ipTimbangan1;
     private String ipTimbangan2;
     private String ipTimbangan3;
+    int port;
+    // Inisialisasi variabel status koneksi untuk setiap IP Timbangan
+    boolean isConnectedTimbangan1 = false;
+    boolean isConnectedTimbangan2 = false;
+    boolean isConnectedTimbangan3 = false;
     /**
      * Creates new form MainFrame
      */
@@ -72,38 +85,15 @@ public class MainFrame extends javax.swing.JFrame {
             ipTimbangan1 = ipAddresses.get(0);
             ipTimbangan2 = ipAddresses.get(1);
             ipTimbangan3 = ipAddresses.get(2);
-            // Cek koneksi ke IP Timbangan 1
-            if (isConnected(ipTimbangan1, 8888)) {
-                // Timbangan 1 terhubung, lakukan tindakan yang sesuai
-                // Misalnya, tampilkan pesan sukses
-                JOptionPane.showMessageDialog(this, "Timbangan 1 terhubung ke IP: " + ipTimbangan1, "Koneksi Sukses", JOptionPane.INFORMATION_MESSAGE);
-            } else {
-                // Timbangan 1 tidak terhubung, tampilkan pesan kesalahan
-                JOptionPane.showMessageDialog(this, "Timbangan 1 tidak dapat terhubung ke IP: " + ipTimbangan1, "Koneksi Gagal", JOptionPane.ERROR_MESSAGE);
-            }
+
         } else {
             JOptionPane.showMessageDialog(this, "Pastikan semua IP terisi!", "Peringatan", JOptionPane.WARNING_MESSAGE);
         }
-
-        int port = 8888;
+        port = 8888;
         titleLabel.setText("Welcome, " + loggedInUsername); // titleLabel adalah contoh komponen GUI yang menampilkan nama pengguna
         try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "");
-            String query = "SELECT gross1, tare1, net1, nama_barang, tanggal, jam, 'Timbangan 1' AS sumber\n" +
-            "FROM berat\n" +
-            "WHERE tanggal = CURDATE()\n" +
-            "\n" +
-            "UNION ALL\n" +
-            "\n" +
-            "SELECT gross2, tare2, net2, nama_barang, tanggal, jam, 'Timbangan 2' AS sumber\n" +
-            "FROM berat2\n" +
-            "WHERE tanggal = CURDATE()\n" +
-            "\n" +
-            "UNION ALL\n" +
-            "\n" +
-            "SELECT gross3, tare3, net3, nama_barang, tanggal, jam, 'Timbangan 3' AS sumber\n" +
-            "FROM berat3\n" +
-            "WHERE tanggal = CURDATE();";
+            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
+            String query = "SELECT * FROM berat WHERE tanggal = CURDATE();";
             Statement statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery(query);
             DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
@@ -126,252 +116,575 @@ public class MainFrame extends javax.swing.JFrame {
                 }        
             }
 
-            ExecutorService executor = Executors.newSingleThreadExecutor();
-                executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try (Socket socket = new Socket(ipTimbangan1, port);
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+ExecutorService executor = Executors.newSingleThreadExecutor();
+executor.execute(new Runnable() {
+    boolean wasConnected = false; // Status koneksi sebelumnya
 
-                        String grossValue = null;
-                        String tareValue = null;
-                        String netValue = null; 
-                        LocalDateTime currentDateTime = LocalDateTime.now();
-                        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-                        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
-                        String tanggal = currentDateTime.format(dateFormatter);
-                        String jam = currentDateTime.format(timeFormatter);
-                        String line;
-                        
-                        
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.startsWith("GROSS")) {
-                                grossValue = extractValue(line);
-                            } else if (line.startsWith("TARE")) {
-                                tareValue = extractValue(line);
-                            } else if (line.startsWith("NET")) {
-                                netValue = extractValue(line);
-                            }
+    @Override
+    public void run() {
+        while (true) {
+            boolean isConnected = false; // Awalnya, anggap tidak terhubung
+            boolean finalIsConnected = isConnected; // Buat variabel yang bersifat final atau effectively final
+
+            try (Socket socket = new Socket()) {
+                // Set timeout untuk operasi koneksi dan pembacaan data
+                int timeoutInMilliseconds = 5000; // Ganti dengan timeout yang diinginkan (dalam milidetik)
+                socket.connect(new InetSocketAddress(ipTimbangan1, port), timeoutInMilliseconds);
+                socket.setSoTimeout(timeoutInMilliseconds);
+
+                isConnected = true; // Update status koneksi
+                finalIsConnected = isConnected; // Update variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                });
+
+                if (!wasConnected) {
+                    SwingUtilities.invokeLater(() -> {
+                        System.out.println("Koneksi terhubung kembali"); // Tampilkan pesan koneksi terhubung kembali di console
+                    });
+                }
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                    String grossValue = null;
+                    String tareValue = null;
+                    String netValue = null;
+                    LocalDateTime currentDateTime = LocalDateTime.now();
+                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                    String tanggal = currentDateTime.format(dateFormatter);
+                    String jam = currentDateTime.format(timeFormatter);
+                    String line;
+
+                    isConnected = true; // Koneksi berhasil
+
+                    while (isConnected && (line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.startsWith("NET")) {
+                            grossValue = extractValue(line);
+                            System.out.println(grossValue);
+                        } if (line.startsWith("TARE")) {
+                            tareValue = extractValue(line);
+                            System.out.println(tareValue);
+                        } if (line.startsWith("GROSS")) {
+                            netValue = extractValue(line);
+                            System.out.println(netValue);
+                        } if (line.startsWith("a")) {
+                            jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                        }
+
+                        System.out.println(line);
+                        String sumber = "Timbangan 1";
                         String namaBarang = namaBarangTextField.getText();
-                            if (grossValue != null && tareValue != null && netValue != null && namaBarang !=null) {
-                                // Anda telah mengumpulkan semua nilai yang diperlukan
-                                // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
-                                System.out.println("GROSS Value: " + grossValue);
-                                grossTextField.setText(grossValue);
-                                System.out.println("TARE Value: " + tareValue);
-                                tareTextField.setText(tareValue);
-                                System.out.println("NET Value: " + netValue);
-                                System.out.println("Nama Barang: " + namaBarang);
-                                receivedTimbanganA.setText(netValue);
+                        if (grossValue != null && tareValue != null && netValue != null && namaBarang != null) {
+                            // Anda telah mengumpulkan semua nilai yang diperlukan
+                        // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                        System.out.println("GROSS Value: " + grossValue);
+                        grossTextField.setText(grossValue);
+                        System.out.println("TARE Value: " + tareValue);
+                        tareTextField.setText(tareValue);
+                        System.out.println("NET Value: " + netValue);
+                        System.out.println("Nama Barang: " + namaBarang);
+                        receivedTimbanganA.setText(netValue);
 
-                                // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
-                                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
-                                    String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?)";
-                                    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-                                        preparedStatement.setString(1, grossValue);
-                                        preparedStatement.setString(2, tareValue);
-                                        preparedStatement.setString(3, netValue);
-                                        preparedStatement.setString(4, namaBarang);
-                                        preparedStatement.setString(5, getCurrentDate());
-                                        preparedStatement.setString(6, getCurrentTime());
-                                        preparedStatement.executeUpdate();
-                                        System.out.println("Data berhasil disimpan ke database.");
-                                        
-                                        // Setelah data disimpan, tambahkan baris baru ke tabel
-                                        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-                                        Object[] newRow = {
-                                            model.getRowCount() + 1,
-                                            grossValue,
-                                            tareValue,
-                                            netValue,
-                                            namaBarang,
-                                            getCurrentDate(),
-                                            getCurrentTime(),
-                                            "Timbangan 1"
-                                        };
-                                        model.addRow(newRow);
-                                    }
-                                } catch (SQLException e) {
-                                    e.printStackTrace();
-                                    System.out.println("Error saving data to database: " + e.getMessage());
-                                    
-                                }
-                                // Reset nilai-nilai untuk pengumpulan data selanjutnya
-                                grossValue = null;
-                                tareValue = null;
-                                netValue = null;
+                        // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "")) {
+                            String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam, sumber) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                            try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                preparedStatement.setString(1, grossValue);
+                                preparedStatement.setString(2, tareValue);
+                                preparedStatement.setString(3, netValue);
+                                preparedStatement.setString(4, namaBarang);
+                                preparedStatement.setString(5, getCurrentDate());
+                                preparedStatement.setString(6, getCurrentTime());
+                                preparedStatement.setString(7, sumber);
+                                preparedStatement.executeUpdate();
+                                System.out.println("Data berhasil disimpan ke database.");
+
+                                // Setelah data disimpan, tambahkan baris baru ke tabel
+                                DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                Object[] newRow = {
+                                    model.getRowCount() + 1,
+                                    grossValue,
+                                    tareValue,
+                                    netValue,
+                                    namaBarang,
+                                    getCurrentDate(),
+                                    getCurrentTime(),
+                                    sumber,
+                                };
+                                model.addRow(newRow);
                             }
+                        } catch (SQLException e) {
+                            e.printStackTrace();
+                            System.out.println("Error saving data to database: " + e.getMessage());
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                            System.out.println("Data berhasil disimpan ke database.");
+                            grossValue = null;
+                            tareValue = null;
+                            netValue = null;
+                        }
                     }
+                } catch (SocketTimeoutException e) {
+                    // Tangani eksepsi jika waktu tunggu socket terlampaui
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Timeout: Koneksi terputus");
+                    });
+                } catch (IOException e) {
+                    // Tangani eksepsi jika koneksi terputus
+                    isConnected = false; // Set isConnected menjadi false
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                    });
                 }
-            });
-                
-                executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try (Socket socket = new Socket(ipTimbangan2, port);
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            } catch (IOException e) {
+                // Tangani eksepsi jika koneksi gagal
+                final boolean finalIsConnectedCopy = finalIsConnected; // Buat salinan variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    
+                    if (!finalIsConnectedCopy) {
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                    }
+                });
+            } finally {
+                if (!isConnected && wasConnected) {
+                    wasConnected = false; // Reset status koneksi sebelumnya
+                } else if (isConnected && !wasConnected) {
+                    wasConnected = true; // Update status koneksi sebelumnya
+                }
+            }
+        }
+    }
+});
 
-                        String grossValue = null;
-                        String tareValue = null;
-                        String netValue = null; 
-                        LocalDateTime currentDateTime = LocalDateTime.now();
-                        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-                        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
-                        String tanggal = currentDateTime.format(dateFormatter);
-                        String jam = currentDateTime.format(timeFormatter);
-                        String line;
-                        
-                        
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.startsWith("GROSS")) {
-                                grossValue = extractValue(line);
-                            } else if (line.startsWith("TARE")) {
-                                tareValue = extractValue(line);
-                            } else if (line.startsWith("NET")) {
-                                netValue = extractValue(line);
+executor.execute(new Runnable() {
+    boolean wasConnected = false; // Status koneksi sebelumnya
+
+    @Override
+    public void run() {
+        while (true) {
+            boolean isConnected = false; // Awalnya, anggap tidak terhubung
+            boolean finalIsConnected = isConnected; // Buat variabel yang bersifat final atau effectively final
+
+            try (Socket socket = new Socket()) {
+                // Set timeout untuk operasi koneksi dan pembacaan data
+                int timeoutInMilliseconds = 5000; // Ganti dengan timeout yang diinginkan (dalam milidetik)
+                socket.connect(new InetSocketAddress(ipTimbangan1, port), timeoutInMilliseconds);
+                socket.setSoTimeout(timeoutInMilliseconds);
+
+                isConnected = true; // Update status koneksi
+                finalIsConnected = isConnected; // Update variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                });
+
+                if (!wasConnected) {
+                    SwingUtilities.invokeLater(() -> {
+                        System.out.println("Koneksi terhubung kembali"); // Tampilkan pesan koneksi terhubung kembali di console
+                    });
+                }
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                    String grossValue = null;
+                    String tareValue = null;
+                    String netValue = null;
+                    LocalDateTime currentDateTime = LocalDateTime.now();
+                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                    String tanggal = currentDateTime.format(dateFormatter);
+                    String jam = currentDateTime.format(timeFormatter);
+                    String line;
+
+                    isConnected = true; // Koneksi berhasil
+
+                    while (isConnected && (line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.startsWith("NET")) {
+                            grossValue = extractValue(line);
+                            System.out.println(grossValue);
+                        } if (line.startsWith("TARE")) {
+                            tareValue = extractValue(line);
+                            System.out.println(tareValue);
+                        } if (line.startsWith("GROSS")) {
+                            netValue = extractValue(line);
+                            System.out.println(netValue);
+                        } if (line.startsWith("a")) {
+                            jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                        }
+
+                        System.out.println(line);
+                        String sumber = "Timbangan 1";
+                        String namaBarang = namaBarangTextField.getText();
+                        if (grossValue != null && tareValue != null && netValue != null && namaBarang != null) {
+                            // Anda telah mengumpulkan semua nilai yang diperlukan
+                        // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                        System.out.println("GROSS Value: " + grossValue);
+                        grossTextField.setText(grossValue);
+                        System.out.println("TARE Value: " + tareValue);
+                        tareTextField.setText(tareValue);
+                        System.out.println("NET Value: " + netValue);
+                        System.out.println("Nama Barang: " + namaBarang);
+                        receivedTimbanganA.setText(netValue);
+
+                        // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "")) {
+                            String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam, sumber) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                            try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                preparedStatement.setString(1, grossValue);
+                                preparedStatement.setString(2, tareValue);
+                                preparedStatement.setString(3, netValue);
+                                preparedStatement.setString(4, namaBarang);
+                                preparedStatement.setString(5, getCurrentDate());
+                                preparedStatement.setString(6, getCurrentTime());
+                                preparedStatement.setString(7, sumber);
+                                preparedStatement.executeUpdate();
+                                System.out.println("Data berhasil disimpan ke database.");
+
+                                // Setelah data disimpan, tambahkan baris baru ke tabel
+                                DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                Object[] newRow = {
+                                    model.getRowCount() + 1,
+                                    grossValue,
+                                    tareValue,
+                                    netValue,
+                                    namaBarang,
+                                    getCurrentDate(),
+                                    getCurrentTime(),
+                                    sumber,
+                                };
+                                model.addRow(newRow);
                             }
+                        } catch (SQLException e) {
+                            e.printStackTrace();
+                            System.out.println("Error saving data to database: " + e.getMessage());
+                        }
+                            System.out.println("Data berhasil disimpan ke database.");
+                            grossValue = null;
+                            tareValue = null;
+                            netValue = null;
+                        }
+                    }
+                } catch (SocketTimeoutException e) {
+                    // Tangani eksepsi jika waktu tunggu socket terlampaui
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Timeout: Koneksi terputus");
+                    });
+                } catch (IOException e) {
+                    // Tangani eksepsi jika koneksi terputus
+                    isConnected = false; // Set isConnected menjadi false
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                    });
+                }
+            } catch (IOException e) {
+                // Tangani eksepsi jika koneksi gagal
+                final boolean finalIsConnectedCopy = finalIsConnected; // Buat salinan variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    
+                    if (!finalIsConnectedCopy) {
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                    }
+                });
+            } finally {
+                if (!isConnected && wasConnected) {
+                    wasConnected = false; // Reset status koneksi sebelumnya
+                } else if (isConnected && !wasConnected) {
+                    wasConnected = true; // Update status koneksi sebelumnya
+                }
+            }
+        }
+    }
+});
+
+executor.execute(new Runnable() {
+    boolean wasConnected = false; // Status koneksi sebelumnya
+
+    @Override
+    public void run() {
+        while (true) {
+            boolean isConnected2 = false; // Awalnya, anggap tidak terhubung
+            boolean finalIsConnected2 = isConnected2; // Buat variabel yang bersifat final atau effectively final
+
+            try (Socket socket = new Socket()) {
+                // Set timeout untuk operasi koneksi dan pembacaan data
+                int timeoutInMilliseconds = 5000; // Ganti dengan timeout yang diinginkan (dalam milidetik)
+                socket.connect(new InetSocketAddress(ipTimbangan2, port), timeoutInMilliseconds);
+                socket.setSoTimeout(timeoutInMilliseconds);
+
+                isConnected2 = true; // Update status koneksi
+                finalIsConnected2 = isConnected2; // Update variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    jLabel17.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                });
+
+                if (!wasConnected) {
+                    SwingUtilities.invokeLater(() -> {
+                        System.out.println("Koneksi timbangan 2 terhubung kembali"); // Tampilkan pesan koneksi terhubung kembali di console
+                    });
+                }
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                    String grossValue2 = null;
+                    String tareValue2 = null;
+                    String netValue2 = null;
+                    LocalDateTime currentDateTime = LocalDateTime.now();
+                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                    String tanggal = currentDateTime.format(dateFormatter);
+                    String jam = currentDateTime.format(timeFormatter);
+                    String line;
+
+                    isConnected2 = true; // Koneksi berhasil
+
+                    while (isConnected2 && (line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.startsWith("NET")) {
+                            grossValue2 = extractValue(line);
+                            System.out.println(grossValue2);
+                        } if (line.startsWith("TARE")) {
+                            tareValue2 = extractValue(line);
+                            System.out.println(tareValue2);
+                        } if (line.startsWith("GROSS")) {
+                            netValue2 = extractValue(line);
+                            System.out.println(netValue2);
+                        } if (line.startsWith("a")) {
+                            jLabel17.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                        }
+
+                        System.out.println(line);
+                        String sumber = "Timbangan 2";
                         String namaBarang2 = namaBarangTextField2.getText();
-                            if (grossValue != null && tareValue != null && netValue != null && namaBarang2 !=null) {
-                                // Anda telah mengumpulkan semua nilai yang diperlukan
-                                // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
-                                System.out.println("GROSS Value: " + grossValue);
-                                grossTextField2.setText(grossValue);
-                                System.out.println("TARE Value: " + tareValue);
-                                tareTextField2.setText(tareValue);
-                                System.out.println("NET Value: " + netValue);
-                                System.out.println("Nama Barang: " + namaBarang2);
-                                receivedTimbanganB.setText(netValue);
+                        if (grossValue2 != null && tareValue2 != null && netValue2 != null && namaBarang2 != null) {
+                            // Anda telah mengumpulkan semua nilai yang diperlukan
+                        // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                        System.out.println("GROSS Value: " + grossValue2);
+                        grossTextField2.setText(grossValue2);
+                        System.out.println("TARE Value: " + tareValue2);
+                        tareTextField2.setText(tareValue2);
+                        System.out.println("NET Value: " + netValue2);
+                        System.out.println("Nama Barang: " + namaBarang2);
+                        receivedTimbanganB.setText(netValue2);
 
-                                // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
-                                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
-                                    String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?)";
-                                    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-                                        preparedStatement.setString(1, grossValue);
-                                        preparedStatement.setString(2, tareValue);
-                                        preparedStatement.setString(3, netValue);
-                                        preparedStatement.setString(4, namaBarang2);
-                                        preparedStatement.setString(5, getCurrentDate());
-                                        preparedStatement.setString(6, getCurrentTime());
-                                        preparedStatement.executeUpdate();
-                                        System.out.println("Data berhasil disimpan ke database.");
-                                        
-                                        // Setelah data disimpan, tambahkan baris baru ke tabel
-                                        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-                                        Object[] newRow = {
-                                            model.getRowCount() + 1,
-                                            grossValue,
-                                            tareValue,
-                                            netValue,
-                                            namaBarang2,
-                                            getCurrentDate(),
-                                            getCurrentTime(),
-                                            "Timbangan 2"
-                                        };
-                                        model.addRow(newRow);
-                                    }
-                                } catch (SQLException e) {
-                                    e.printStackTrace();
-                                    System.out.println("Error saving data to database: " + e.getMessage());
-                                    
-                                }
-                                // Reset nilai-nilai untuk pengumpulan data selanjutnya
-                                grossValue = null;
-                                tareValue = null;
-                                netValue = null;
+                        // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "")) {
+                            String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam, sumber) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                            try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                preparedStatement.setString(1, grossValue2);
+                                preparedStatement.setString(2, tareValue2);
+                                preparedStatement.setString(3, netValue2);
+                                preparedStatement.setString(4, namaBarang2);
+                                preparedStatement.setString(5, getCurrentDate());
+                                preparedStatement.setString(6, getCurrentTime());
+                                preparedStatement.setString(7, sumber);
+                                preparedStatement.executeUpdate();
+                                System.out.println("Data berhasil disimpan ke database.");
+
+                                // Setelah data disimpan, tambahkan baris baru ke tabel
+                                DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                Object[] newRow = {
+                                    model.getRowCount() + 1,
+                                    grossValue2,
+                                    tareValue2,
+                                    netValue2,
+                                    namaBarang2,
+                                    getCurrentDate(),
+                                    getCurrentTime(),
+                                    sumber,
+                                };
+                                model.addRow(newRow);
                             }
+                        } catch (SQLException e) {
+                            e.printStackTrace();
+                            System.out.println("Error saving data to database: " + e.getMessage());
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                            System.out.println("Data berhasil disimpan ke database.");
+                            grossValue2 = null;
+                            tareValue2 = null;
+                            netValue2 = null;
+                        }
                     }
+                } catch (SocketTimeoutException e) {
+                    // Tangani eksepsi jika waktu tunggu socket terlampaui
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Timeout: Koneksi terputus");
+                    });
+                } catch (IOException e) {
+                    // Tangani eksepsi jika koneksi terputus
+                    isConnected2 = false; // Set isConnected menjadi false
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel17.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                    });
                 }
-            });
-                
-                executor.execute(new Runnable() {
-                @Override
-                public void run() {
-                    try (Socket socket = new Socket(ipTimbangan3, port);
-                        BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+            } catch (IOException e) {
+                // Tangani eksepsi jika koneksi gagal
+                final boolean finalIsConnectedCopy2 = finalIsConnected2; // Buat salinan variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    
+                    if (!finalIsConnectedCopy2) {
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                        jLabel17.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                    }
+                });
+            } finally {
+                if (!isConnected2 && wasConnected) {
+                    wasConnected = false; // Reset status koneksi sebelumnya
+                } else if (isConnected2 && !wasConnected) {
+                    wasConnected = true; // Update status koneksi sebelumnya
+                }
+            }
+        }
+    }
+});
 
-                        String grossValue = null;
-                        String tareValue = null;
-                        String netValue = null; 
-                        LocalDateTime currentDateTime = LocalDateTime.now();
-                        DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
-                        DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
-                        String tanggal = currentDateTime.format(dateFormatter);
-                        String jam = currentDateTime.format(timeFormatter);
-                        String line;
-                        
-                        
-                        while ((line = reader.readLine()) != null) {
-                            line = line.trim();
-                            if (line.startsWith("GROSS")) {
-                                grossValue = extractValue(line);
-                            } else if (line.startsWith("TARE")) {
-                                tareValue = extractValue(line);
-                            } else if (line.startsWith("NET")) {
-                                netValue = extractValue(line);
-                            }
+executor.execute(new Runnable() {
+    boolean wasConnected = false; // Status koneksi sebelumnya
+
+    @Override
+    public void run() {
+        while (true) {
+            boolean isConnected3 = false; // Awalnya, anggap tidak terhubung
+            boolean finalIsConnected3 = isConnected3; // Buat variabel yang bersifat final atau effectively final
+
+            try (Socket socket = new Socket()) {
+                // Set timeout untuk operasi koneksi dan pembacaan data
+                int timeoutInMilliseconds = 5000; // Ganti dengan timeout yang diinginkan (dalam milidetik)
+                socket.connect(new InetSocketAddress(ipTimbangan3, port), timeoutInMilliseconds);
+                socket.setSoTimeout(timeoutInMilliseconds);
+
+                isConnected3 = true; // Update status koneksi
+                finalIsConnected3 = isConnected3; // Update variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    jLabel18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                });
+
+                if (!wasConnected) {
+                    SwingUtilities.invokeLater(() -> {
+                        System.out.println("Koneksi timbangan 3 terhubung kembali"); // Tampilkan pesan koneksi terhubung kembali di console
+                    });
+                }
+
+                try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
+                    String grossValue3 = null;
+                    String tareValue3 = null;
+                    String netValue3 = null;
+                    LocalDateTime currentDateTime = LocalDateTime.now();
+                    DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+                    DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
+                    String tanggal = currentDateTime.format(dateFormatter);
+                    String jam = currentDateTime.format(timeFormatter);
+                    String line;
+
+                    isConnected3 = true; // Koneksi berhasil
+
+                    while (isConnected3 && (line = reader.readLine()) != null) {
+                        line = line.trim();
+                        if (line.startsWith("NET")) {
+                            grossValue3 = extractValue(line);
+                            System.out.println(grossValue3);
+                        } if (line.startsWith("TARE")) {
+                            tareValue3 = extractValue(line);
+                            System.out.println(tareValue3);
+                        } if (line.startsWith("GROSS")) {
+                            netValue3 = extractValue(line);
+                            System.out.println(netValue3);
+                        } if (line.startsWith("a")) {
+                            jLabel18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
+                        }
+
+                        System.out.println(line);
+                        String sumber = "Timbangan 3";
                         String namaBarang3 = namaBarangTextField3.getText();
-                            if (grossValue != null && tareValue != null && netValue != null && namaBarang3 !=null) {
-                                // Anda telah mengumpulkan semua nilai yang diperlukan
-                                // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
-                                System.out.println("GROSS Value: " + grossValue);
-                                grossTextField3.setText(grossValue);
-                                System.out.println("TARE Value: " + tareValue);
-                                tareTextField3.setText(tareValue);
-                                System.out.println("NET Value: " + netValue);
-                                System.out.println("Nama Barang: " + namaBarang3);
-                                receivedTimbanganC.setText(netValue);
+                        if (grossValue3 != null && tareValue3 != null && netValue3 != null && namaBarang3 != null) {
+                            // Anda telah mengumpulkan semua nilai yang diperlukan
+                        // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
+                        System.out.println("GROSS Value: " + grossValue3);
+                        grossTextField3.setText(grossValue3);
+                        System.out.println("TARE Value: " + tareValue3);
+                        tareTextField3.setText(tareValue3);
+                        System.out.println("NET Value: " + netValue3);
+                        System.out.println("Nama Barang: " + namaBarang3);
+                        receivedTimbanganC.setText(netValue3);
 
-                                // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
-                                try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "")) {
-                                    String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam) VALUES (?, ?, ?, ?, ?, ?)";
-                                    try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-                                        preparedStatement.setString(1, grossValue);
-                                        preparedStatement.setString(2, tareValue);
-                                        preparedStatement.setString(3, netValue);
-                                        preparedStatement.setString(4, namaBarang3);
-                                        preparedStatement.setString(5, getCurrentDate());
-                                        preparedStatement.setString(6, getCurrentTime());
-                                        preparedStatement.executeUpdate();
-                                        System.out.println("Data berhasil disimpan ke database.");
-                                        
-                                        // Setelah data disimpan, tambahkan baris baru ke tabel
-                                        DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
-                                        Object[] newRow = {
-                                            model.getRowCount() + 1,
-                                            grossValue,
-                                            tareValue,
-                                            netValue,
-                                            namaBarang3,
-                                            getCurrentDate(),
-                                            getCurrentTime(),
-                                            "Timbangan 3"
-                                        };
-                                        model.addRow(newRow);
-                                    }
-                                } catch (SQLException e) {
-                                    e.printStackTrace();
-                                    System.out.println("Error saving data to database: " + e.getMessage());
-                                    
-                                }
-                                // Reset nilai-nilai untuk pengumpulan data selanjutnya
-                                grossValue = null;
-                                tareValue = null;
-                                netValue = null;
+                        // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
+                        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "")) {
+                            String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam, sumber) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                            try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
+                                preparedStatement.setString(1, grossValue3);
+                                preparedStatement.setString(2, tareValue3);
+                                preparedStatement.setString(3, netValue3);
+                                preparedStatement.setString(4, namaBarang3);
+                                preparedStatement.setString(5, getCurrentDate());
+                                preparedStatement.setString(6, getCurrentTime());
+                                preparedStatement.setString(7, sumber);
+                                preparedStatement.executeUpdate();
+                                System.out.println("Data berhasil disimpan ke database.");
+
+                                // Setelah data disimpan, tambahkan baris baru ke tabel
+                                DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
+                                Object[] newRow = {
+                                    model.getRowCount() + 1,
+                                    grossValue3,
+                                    tareValue3,
+                                    netValue3,
+                                    namaBarang3,
+                                    getCurrentDate(),
+                                    getCurrentTime(),
+                                    sumber,
+                                };
+                                model.addRow(newRow);
                             }
+                        } catch (SQLException e) {
+                            e.printStackTrace();
+                            System.out.println("Error saving data to database: " + e.getMessage());
                         }
-                    } catch (Exception e) {
-                        e.printStackTrace();
+                            System.out.println("Data berhasil disimpan ke database.");
+                            grossValue3 = null;
+                            tareValue3 = null;
+                            netValue3 = null;
+                        }
                     }
+                } catch (SocketTimeoutException e) {
+                    // Tangani eksepsi jika waktu tunggu socket terlampaui
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Timeout: Koneksi terputus");
+                    });
+                } catch (IOException e) {
+                    // Tangani eksepsi jika koneksi terputus
+                    isConnected3 = false; // Set isConnected menjadi false
+                    SwingUtilities.invokeLater(() -> {
+                        jLabel18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                    });
                 }
-            });
+            } catch (IOException e) {
+                // Tangani eksepsi jika koneksi gagal
+                final boolean finalIsConnectedCopy = finalIsConnected3; // Buat salinan variabel yang bersifat final atau effectively final
+                SwingUtilities.invokeLater(() -> {
+                    
+                    if (!finalIsConnectedCopy) {
+                        System.out.println("Koneksi terputus"); // Tampilkan pesan koneksi terputus di console
+                        jLabel18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                    }
+                });
+            } finally {
+                if (!isConnected3 && wasConnected) {
+                    wasConnected = false; // Reset status koneksi sebelumnya
+                } else if (isConnected3 && !wasConnected) {
+                    wasConnected = true; // Update status koneksi sebelumnya
+                }
+            }
+        }
+    }
+});
+
             int rowNum = 1; // Nomor urut awal
 
             while (resultSet.next()) {
@@ -412,7 +725,6 @@ public class MainFrame extends javax.swing.JFrame {
     private void initComponents() {
 
         jPanel1 = new javax.swing.JPanel();
-        jButton1 = new javax.swing.JButton();
         jButton2 = new javax.swing.JButton();
         jButton3 = new javax.swing.JButton();
         titleLabel = new javax.swing.JLabel();
@@ -441,6 +753,9 @@ public class MainFrame extends javax.swing.JFrame {
         grossTextField3 = new javax.swing.JLabel();
         jLabel14 = new javax.swing.JLabel();
         jLabel15 = new javax.swing.JLabel();
+        jLabel16 = new javax.swing.JLabel();
+        jLabel17 = new javax.swing.JLabel();
+        jLabel18 = new javax.swing.JLabel();
         jScrollPane1 = new javax.swing.JScrollPane();
         jTable1 = new javax.swing.JTable();
         jLabel2 = new javax.swing.JLabel();
@@ -457,16 +772,6 @@ public class MainFrame extends javax.swing.JFrame {
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
         jPanel1.setBackground(new java.awt.Color(25, 38, 85));
-
-        jButton1.setBackground(new java.awt.Color(243, 240, 202));
-        jButton1.setFont(new java.awt.Font("Arial", 1, 12)); // NOI18N
-        jButton1.setText("Data Barang");
-        jButton1.setBorder(null);
-        jButton1.addActionListener(new java.awt.event.ActionListener() {
-            public void actionPerformed(java.awt.event.ActionEvent evt) {
-                jButton1ActionPerformed(evt);
-            }
-        });
 
         jButton2.setBackground(new java.awt.Color(243, 240, 202));
         jButton2.setFont(new java.awt.Font("Arial", 1, 12)); // NOI18N
@@ -514,8 +819,6 @@ public class MainFrame extends javax.swing.JFrame {
                 .addGap(18, 18, 18)
                 .addComponent(jButton2, javax.swing.GroupLayout.PREFERRED_SIZE, 162, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(18, 18, 18)
-                .addComponent(jButton1, javax.swing.GroupLayout.PREFERRED_SIZE, 162, javax.swing.GroupLayout.PREFERRED_SIZE)
-                .addGap(18, 18, 18)
                 .addComponent(jButton3, javax.swing.GroupLayout.PREFERRED_SIZE, 105, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addContainerGap())
         );
@@ -526,7 +829,6 @@ public class MainFrame extends javax.swing.JFrame {
                 .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addComponent(titleLabel, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                     .addGroup(jPanel1Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                        .addComponent(jButton1, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)
                         .addComponent(jButton2, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)
                         .addComponent(jButton3, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)
                         .addComponent(jButton4, javax.swing.GroupLayout.DEFAULT_SIZE, 43, Short.MAX_VALUE)))
@@ -628,32 +930,31 @@ public class MainFrame extends javax.swing.JFrame {
             .addGroup(jPanel2Layout.createSequentialGroup()
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addContainerGap()
-                        .addComponent(jLabel1))
+                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addGroup(jPanel2Layout.createSequentialGroup()
+                                .addGap(151, 151, 151)
+                                .addComponent(receivedTimbanganA, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(39, 39, 39)
+                                .addComponent(jLabel3))
+                            .addGroup(jPanel2Layout.createSequentialGroup()
+                                .addContainerGap()
+                                .addComponent(jLabel10, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(grossTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(45, 45, 45)
+                                .addComponent(jLabel11, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(tareTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addGap(80, 80, 80))
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGap(151, 151, 151)
-                        .addComponent(receivedTimbanganA, javax.swing.GroupLayout.PREFERRED_SIZE, 120, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(39, 39, 39)
-                        .addComponent(jLabel3))
-                    .addGroup(jPanel2Layout.createSequentialGroup()
                         .addContainerGap()
-                        .addComponent(jLabel10, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(grossTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(45, 45, 45)
-                        .addComponent(jLabel11, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(tareTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addGap(80, 80, 80)
+                        .addComponent(jLabel1)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 276, Short.MAX_VALUE)
+                        .addComponent(jLabel16, javax.swing.GroupLayout.PREFERRED_SIZE, 46, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)))
                 .addComponent(jSeparator1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jLabel4)
-                    .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addGap(161, 161, 161)
-                        .addComponent(receivedTimbanganB, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addGap(18, 18, 18)
-                        .addComponent(jLabel6))
                     .addGroup(jPanel2Layout.createSequentialGroup()
                         .addGap(9, 9, 9)
                         .addComponent(jLabel13, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -662,36 +963,54 @@ public class MainFrame extends javax.swing.JFrame {
                         .addGap(54, 54, 54)
                         .addComponent(jLabel12, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addComponent(tareTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 64, Short.MAX_VALUE)
+                        .addComponent(tareTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(jPanel2Layout.createSequentialGroup()
+                        .addGap(161, 161, 161)
+                        .addComponent(receivedTimbanganB, javax.swing.GroupLayout.PREFERRED_SIZE, 135, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addGap(18, 18, 18)
+                        .addComponent(jLabel6))
+                    .addComponent(jLabel4))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 46, Short.MAX_VALUE)
+                .addComponent(jLabel17, javax.swing.GroupLayout.PREFERRED_SIZE, 46, javax.swing.GroupLayout.PREFERRED_SIZE)
+                .addGap(18, 18, 18)
                 .addComponent(jSeparator2, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(jLabel7)
-                    .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
-                        .addGroup(jPanel2Layout.createSequentialGroup()
-                            .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 187, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addGap(35, 35, 35)
-                            .addComponent(jLabel9))
-                        .addGroup(jPanel2Layout.createSequentialGroup()
-                            .addComponent(jLabel14, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(grossTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addGap(54, 54, 54)
-                            .addComponent(jLabel15, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                            .addComponent(tareTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addGap(113, 113, 113))
+                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addGroup(jPanel2Layout.createSequentialGroup()
+                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING)
+                            .addGroup(jPanel2Layout.createSequentialGroup()
+                                .addComponent(receivedTimbanganC, javax.swing.GroupLayout.PREFERRED_SIZE, 187, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(35, 35, 35)
+                                .addComponent(jLabel9))
+                            .addGroup(jPanel2Layout.createSequentialGroup()
+                                .addComponent(jLabel14, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(grossTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(54, 54, 54)
+                                .addComponent(jLabel15, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                                .addComponent(tareTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 90, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addGap(113, 113, 113))
+                    .addGroup(jPanel2Layout.createSequentialGroup()
+                        .addComponent(jLabel7)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(jLabel18, javax.swing.GroupLayout.PREFERRED_SIZE, 46, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addContainerGap())))
         );
         jPanel2Layout.setVerticalGroup(
             jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
             .addComponent(jSeparator1)
             .addComponent(jSeparator2)
             .addGroup(jPanel2Layout.createSequentialGroup()
+                .addComponent(jLabel7)
+                .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+            .addGroup(jPanel2Layout.createSequentialGroup()
                 .addContainerGap()
                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                     .addGroup(jPanel2Layout.createSequentialGroup()
-                        .addComponent(jLabel1)
+                        .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                            .addComponent(jLabel1)
+                            .addComponent(jLabel16))
                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addComponent(receivedTimbanganA, javax.swing.GroupLayout.Alignment.TRAILING, javax.swing.GroupLayout.PREFERRED_SIZE, 53, javax.swing.GroupLayout.PREFERRED_SIZE)
@@ -706,7 +1025,9 @@ public class MainFrame extends javax.swing.JFrame {
                     .addGroup(jPanel2Layout.createSequentialGroup()
                         .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                             .addGroup(jPanel2Layout.createSequentialGroup()
-                                .addComponent(jLabel4)
+                                .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(jLabel4)
+                                    .addComponent(jLabel17))
                                 .addGroup(jPanel2Layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
                                     .addGroup(jPanel2Layout.createSequentialGroup()
                                         .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
@@ -733,10 +1054,10 @@ public class MainFrame extends javax.swing.JFrame {
                                 .addComponent(grossTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 26, javax.swing.GroupLayout.PREFERRED_SIZE)
                                 .addComponent(jLabel14))
                             .addComponent(jLabel15))
-                        .addContainerGap(12, Short.MAX_VALUE))))
-            .addGroup(javax.swing.GroupLayout.Alignment.TRAILING, jPanel2Layout.createSequentialGroup()
-                .addComponent(jLabel7)
-                .addGap(39, 135, Short.MAX_VALUE))
+                        .addContainerGap(javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE))
+                    .addGroup(jPanel2Layout.createSequentialGroup()
+                        .addComponent(jLabel18)
+                        .addGap(0, 0, Short.MAX_VALUE))))
         );
 
         jTable1.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
@@ -826,12 +1147,11 @@ public class MainFrame extends javax.swing.JFrame {
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(jLabel5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(namaBarangTextField2))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 412, Short.MAX_VALUE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addGroup(layout.createSequentialGroup()
-                                .addComponent(jLabel8)
-                                .addGap(9, 9, 9))
-                            .addComponent(namaBarangTextField3))))
+                            .addComponent(jLabel8)
+                            .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 179, javax.swing.GroupLayout.PREFERRED_SIZE))
+                        .addGap(6, 6, 6)))
                 .addGap(19, 19, 19))
         );
         layout.setVerticalGroup(
@@ -847,22 +1167,20 @@ public class MainFrame extends javax.swing.JFrame {
                         .addComponent(searchButton, javax.swing.GroupLayout.DEFAULT_SIZE, 34, Short.MAX_VALUE)
                         .addComponent(resetButton, javax.swing.GroupLayout.DEFAULT_SIZE, 34, Short.MAX_VALUE)))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 267, Short.MAX_VALUE)
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 321, Short.MAX_VALUE)
                 .addGap(18, 18, 18)
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(layout.createSequentialGroup()
-                        .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
-                        .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(layout.createSequentialGroup()
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(namaBarangTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                            .addComponent(namaBarangTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.UNRELATED)
+                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                        .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                    .addComponent(namaBarangTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                        .addComponent(namaBarangTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addGap(18, 18, 18)
                 .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 38, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(22, 22, 22))
         );
@@ -870,18 +1188,13 @@ public class MainFrame extends javax.swing.JFrame {
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
-    private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
-        // TODO add your handling code here:
-        Barang barangForm = new Barang();
-        barangForm.setVisible(true);
-        this.dispose();
-    }//GEN-LAST:event_jButton1ActionPerformed
-
     public boolean isConnected(String ipAddress, int port) {
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress(ipAddress, port), 1000); // Timeout set to 1 second (1000 milliseconds)
+            System.out.println("Sambung");
             return true; // Koneksi berhasil
         } catch (IOException e) {
+            System.out.println("Disconnect");
             return false; // Gagal terhubung
         }
     }
@@ -891,6 +1204,14 @@ public class MainFrame extends javax.swing.JFrame {
         // TODO add your handling code here:
     }//GEN-LAST:event_exportButtonMouseEntered
 
+     private boolean checkConnection() {
+        try (Socket socket = new Socket(ipTimbangan1, port)) {
+            return true; // Koneksi berhasil
+        } catch (Exception e) {
+            return false; // Koneksi terputus
+        }
+    }
+    
     private void exportButtonActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_exportButtonActionPerformed
         try{
            JFileChooser jFileChooser = new JFileChooser();
@@ -976,7 +1297,7 @@ public class MainFrame extends javax.swing.JFrame {
         "FROM berat3\n" +
         "WHERE tanggal = ?";
 
-        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/coba", "root", "");
+        try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
              PreparedStatement preparedStatement = connection.prepareStatement(query)) {
             preparedStatement.setString(1, formattedDate);
             preparedStatement.setString(2, formattedDate);
@@ -1026,14 +1347,12 @@ public class MainFrame extends javax.swing.JFrame {
                 int rowNum = tableModel.getRowCount() + 1;
                 Object[] row = {
                     rowNum,
-                    resultSet.getString("timbangan1"),
-                    resultSet.getString("timbangan2"),
-                    resultSet.getString("timbangan3"),
+                    resultSet.getString("gross1"),
+                    resultSet.getString("tare1"),
+                    resultSet.getString("net1"),
                     resultSet.getString("nama_barang"),
-                    resultSet.getString("nama_barang2"),
-                    resultSet.getString("nama_barang3"),
                     resultSet.getString("tanggal"),
-                    resultSet.getString("jam"),
+                    resultSet.getString("jam")
                 };
                 model.addRow(row);
             }
@@ -1111,7 +1430,6 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JLabel grossTextField;
     private javax.swing.JLabel grossTextField2;
     private javax.swing.JLabel grossTextField3;
-    private javax.swing.JButton jButton1;
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton3;
     private javax.swing.JButton jButton4;
@@ -1123,6 +1441,9 @@ public class MainFrame extends javax.swing.JFrame {
     private javax.swing.JLabel jLabel13;
     private javax.swing.JLabel jLabel14;
     private javax.swing.JLabel jLabel15;
+    private javax.swing.JLabel jLabel16;
+    private javax.swing.JLabel jLabel17;
+    private javax.swing.JLabel jLabel18;
     private javax.swing.JLabel jLabel2;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
