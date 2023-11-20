@@ -159,13 +159,13 @@ Runnable runnable1 = new Runnable(){
                                 
                                 while (isConnected && (line = reader.readLine()) != null) {
                                     line = line.trim();
-                                    if (line.startsWith("NET")) {
+                                    if (line.startsWith("GROSS")) {
                                         grossValue = extractValue(line);
                                         System.out.println(grossValue);
                                     } if (line.startsWith("TARE")) {
                                         tareValue = extractValue(line);
                                         System.out.println(tareValue);
-                                    } if (line.startsWith("GROSS")) {
+                                    } if (line.startsWith("NET")) {
                                         netValue = extractValue(line);
                                         System.out.println(netValue);
                                     } if (line.startsWith("a")) {
@@ -301,13 +301,13 @@ Runnable runnable2 = new Runnable(){
 
                     while (isConnected2 && (line = reader.readLine()) != null) {
                         line = line.trim();
-                        if (line.startsWith("NET")) {
+                        if (line.startsWith("GROSS")) {
                             grossValue2 = extractValue(line);
                             System.out.println(grossValue2);
                         } if (line.startsWith("TARE")) {
                             tareValue2 = extractValue(line);
                             System.out.println(tareValue2);
-                        } if (line.startsWith("GROSS")) {
+                        } if (line.startsWith("NET")) {
                             netValue2 = extractValue(line);
                             System.out.println(netValue2);
                         } if (line.startsWith("a")) {
@@ -443,13 +443,13 @@ Runnable runnable3 = new Runnable(){
 
                     while (isConnected3 && (line = reader.readLine()) != null) {
                         line = line.trim();
-                        if (line.startsWith("NET")) {
+                        if (line.startsWith("GROSS")) {
                             grossValue3 = extractValue(line);
                             System.out.println(grossValue3);
                         } if (line.startsWith("TARE")) {
                             tareValue3 = extractValue(line);
                             System.out.println(tareValue3);
-                        } if (line.startsWith("GROSS")) {
+                        } if (line.startsWith("NET")) {
                             netValue3 = extractValue(line);
                             System.out.println(netValue3);
                         } if (line.startsWith("a")) {

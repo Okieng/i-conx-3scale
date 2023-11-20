@@ -25,7 +25,7 @@ public class ConfigFrame extends javax.swing.JFrame {
     public ConfigFrame() {
         initComponents();
         try {
-            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "username", "password");
+            Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "");
             String query = "SELECT * FROM config";
             Statement statement = connection.createStatement();
             ResultSet resultSet = statement.executeQuery(query);
