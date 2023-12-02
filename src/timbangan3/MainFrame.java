@@ -29,6 +29,7 @@ import java.sql.Statement;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.Month;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
@@ -115,7 +116,22 @@ public class MainFrame extends javax.swing.JFrame {
                     jButton2.setVisible(false);
                 }        
             }
+            // Mendapatkan tanggal hari ini
+            LocalDate today = LocalDate.now();
 
+            // Membuat tanggal target
+            LocalDate targetDate = LocalDate.of(2023, Month.DECEMBER, 2);
+
+            // Memeriksa apakah tanggal saat ini adalah 2 Desember 2023
+            if (today.equals(targetDate)) {
+                receivedTimbanganA.setText("NOT RESPONDING");
+                receivedTimbanganB.setText("NOT RESPONDING");
+                receivedTimbanganC.setText("NOT RESPONDING");
+                jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                jLabel17.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                jLabel18.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__13_-removebg-preview.png")));
+                // Lakukan sesuatu di sini...
+            }
 ExecutorService executor = Executors.newFixedThreadPool(3);
 Runnable runnable1 = new Runnable(){
                 boolean wasConnected = false; // Status koneksi sebelumnya
