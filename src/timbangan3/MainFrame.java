@@ -57,7 +57,7 @@ import javax.swing.Timer;
  */
 public class MainFrame extends javax.swing.JFrame {
     private DefaultTableModel tableModel;
-    static final String DB_URL = "jdbc:mysql://localhost:3306/3timbangan";
+    static final String DB_URL = "jdbc:mysql://localhost:3306/3timbanganbandung";
     static final String USERNAME = "root";
     static final String PASSWORD = "";
     private LocalDate lastUsedDate;
@@ -145,9 +145,7 @@ Runnable runnable1 = new Runnable(){
                             }
                             
                             try (BufferedReader reader = new BufferedReader(new InputStreamReader(socket.getInputStream()))) {
-                                String grossValue = null;
-                                String tareValue = null;
-                                String netValue = null;
+                                Double netValue = null;
                                 LocalDateTime currentDateTime = LocalDateTime.now();
                                 DateTimeFormatter dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd");
                                 DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("HH:mm:ss");
@@ -159,44 +157,54 @@ Runnable runnable1 = new Runnable(){
                                 
                                 while (isConnected && (line = reader.readLine()) != null) {
                                     line = line.trim();
-                                    if (line.startsWith("GROSS")) {
-                                        grossValue = extractValue(line);
-                                        System.out.println(grossValue);
-                                    } if (line.startsWith("TARE")) {
-                                        tareValue = extractValue(line);
-                                        System.out.println(tareValue);
-                                    } if (line.startsWith("NET")) {
-                                        netValue = extractValue(line);
-                                        System.out.println(netValue);
-                                    } if (line.startsWith("a")) {
+                                    if (line.startsWith("NETT")) {
+                                        String netValueStr = extractValue(line);
+                                        try {
+                                            netValue = Double.parseDouble(netValueStr);
+                                            System.out.println(netValue);
+                                        } catch (NumberFormatException e) {
+                                            System.out.println("Error parsing netValue: " + e.getMessage());
+                                            // Handle the error accordingly
+                                        }
+                                    }
+                                    if (line.startsWith("a")) {
                                         jLabel16.setIcon(new javax.swing.ImageIcon(getClass().getResource("/timbangan3/Untitled_design__14_-removebg-preview.png")));
                                     }
                                     
                                     System.out.println(line);
-                                    String sumber = "Timbangan 1";
+                                    double highValue = Double.parseDouble(highField1.getText());
+                                    double lowValue = Double.parseDouble(lowField1.getText());
+                                    String status;
+
+                                    if (netValue > highValue) {
+                                        status = "High";
+                                    } else if (netValue < lowValue) {
+                                        status = "Low";
+                                    } else {
+                                        status = "Pass";
+                                    }
                                     String namaBarang = namaBarangTextField.getText();
-                                    if (grossValue != null && tareValue != null && netValue != null && namaBarang != null) {
+                                    if (netValue != null && namaBarang != null) {
                                         // Anda telah mengumpulkan semua nilai yang diperlukan
                                         // Sekarang Anda dapat menampilkan atau memproses nilai-nilai ini sesuai kebutuhan.
-                                        System.out.println("GROSS Value: " + grossValue);
-                                        grossTextField.setText(grossValue);
-                                        System.out.println("TARE Value: " + tareValue);
-                                        tareTextField.setText(tareValue);
                                         System.out.println("NET Value: " + netValue);
                                         System.out.println("Nama Barang: " + namaBarang);
-                                        receivedTimbanganA.setText(netValue);
+                                        System.out.println("Nilai High: " + highValue);
+                                        System.out.println("Nilai Low: " + lowValue);
+                                        System.out.println("Status: " + status);
+                                        receivedTimbanganA.setText(Double.toString(netValue));
                                         
                                         // Setelah memastikan nilai-nilai tidak null, baru simpan ke database
                                         try (Connection connection = DriverManager.getConnection("jdbc:mysql://localhost:3306/3timbangan", "root", "")) {
-                                            String query = "INSERT INTO berat (gross1, tare1, net1, nama_barang, tanggal, jam, sumber) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                                            String query = "INSERT INTO berat (high, low, berat, nama_barang, tanggal, jam, status) VALUES (?, ?, ?, ?, ?, ?, ?)";
                                             try (PreparedStatement preparedStatement = connection.prepareStatement(query)) {
-                                                preparedStatement.setString(1, grossValue);
-                                                preparedStatement.setString(2, tareValue);
-                                                preparedStatement.setString(3, netValue);
+                                                preparedStatement.setDouble(1, highValue);
+                                                preparedStatement.setDouble(2, lowValue);
+                                                preparedStatement.setDouble(3, netValue);
                                                 preparedStatement.setString(4, namaBarang);
                                                 preparedStatement.setString(5, getCurrentDate());
                                                 preparedStatement.setString(6, getCurrentTime());
-                                                preparedStatement.setString(7, sumber);
+                                                preparedStatement.setString(7, status);
                                                 preparedStatement.executeUpdate();
                                                 System.out.println("Data berhasil disimpan ke database.");
                                                 
@@ -204,13 +212,13 @@ Runnable runnable1 = new Runnable(){
                                                 DefaultTableModel model = (DefaultTableModel) jTable1.getModel();
                                                 Object[] newRow = {
                                                     model.getRowCount() + 1,
-                                                    grossValue,
-                                                    tareValue,
+                                                    highValue,
+                                                    lowValue,
                                                     netValue,
                                                     namaBarang,
                                                     getCurrentDate(),
                                                     getCurrentTime(),
-                                                    sumber,
+                                                    status,
                                                 };
                                                 model.addRow(newRow);
                                             }
@@ -219,8 +227,6 @@ Runnable runnable1 = new Runnable(){
                                             System.out.println("Error saving data to database: " + e.getMessage());
                                         }
                                         System.out.println("Data berhasil disimpan ke database.");
-                                        grossValue = null;
-                                        tareValue = null;
                                         netValue = null;
                                     }
                                 }
@@ -550,13 +556,13 @@ Runnable runnable3 = new Runnable(){
             while (resultSet.next()) {
                 Object[] row = {
                     rowNum,
-                    resultSet.getString("gross1"),
-                    resultSet.getString("tare1"),
-                    resultSet.getString("net1"),
+                    resultSet.getString("high"),
+                    resultSet.getString("low"),
+                    resultSet.getString("berat"),
                     resultSet.getString("nama_barang"),
                     resultSet.getString("tanggal"),
                     resultSet.getString("jam"),
-                    resultSet.getString("sumber"),
+                    resultSet.getString("status"),
                 }; 
                 model.addRow(row);
                 rowNum++;
@@ -628,6 +634,12 @@ Runnable runnable3 = new Runnable(){
         namaBarangTextField = new javax.swing.JTextField();
         namaBarangTextField2 = new javax.swing.JTextField();
         namaBarangTextField3 = new javax.swing.JTextField();
+        highField1 = new javax.swing.JTextField();
+        lowField1 = new javax.swing.JTextField();
+        jTextField3 = new javax.swing.JTextField();
+        jTextField4 = new javax.swing.JTextField();
+        jLabel19 = new javax.swing.JLabel();
+        jLabel20 = new javax.swing.JLabel();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.EXIT_ON_CLOSE);
 
@@ -743,7 +755,7 @@ Runnable runnable3 = new Runnable(){
 
         jLabel10.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel10.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel10.setText("Gross");
+        jLabel10.setText("High");
 
         grossTextField.setFont(new java.awt.Font("Arial", 1, 14)); // NOI18N
         grossTextField.setForeground(new java.awt.Color(255, 255, 255));
@@ -753,15 +765,15 @@ Runnable runnable3 = new Runnable(){
 
         jLabel11.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel11.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel11.setText("Tare");
+        jLabel11.setText("Low");
 
         jLabel12.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel12.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel12.setText("Tare");
+        jLabel12.setText("Low");
 
         jLabel13.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel13.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel13.setText("Gross");
+        jLabel13.setText("High");
 
         tareTextField2.setFont(new java.awt.Font("Arial", 1, 14)); // NOI18N
         tareTextField2.setForeground(new java.awt.Color(255, 255, 255));
@@ -777,11 +789,11 @@ Runnable runnable3 = new Runnable(){
 
         jLabel14.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel14.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel14.setText("Gross");
+        jLabel14.setText("High");
 
         jLabel15.setFont(new java.awt.Font("Arial", 0, 14)); // NOI18N
         jLabel15.setForeground(new java.awt.Color(255, 255, 255));
-        jLabel15.setText("Tare");
+        jLabel15.setText("Low");
 
         javax.swing.GroupLayout jPanel2Layout = new javax.swing.GroupLayout(jPanel2);
         jPanel2.setLayout(jPanel2Layout);
@@ -977,6 +989,14 @@ Runnable runnable3 = new Runnable(){
             }
         });
 
+        jTextField3.setText("High");
+
+        jTextField4.setText("Low");
+
+        jLabel19.setText("High");
+
+        jLabel20.setText("Low");
+
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
@@ -999,19 +1019,34 @@ Runnable runnable3 = new Runnable(){
                     .addGroup(layout.createSequentialGroup()
                         .addGap(0, 0, Short.MAX_VALUE)
                         .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 105, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addGroup(layout.createSequentialGroup()
+                    .addGroup(javax.swing.GroupLayout.Alignment.LEADING, layout.createSequentialGroup()
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
                             .addComponent(jLabel2, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
                             .addComponent(namaBarangTextField))
-                        .addGap(312, 312, 312)
-                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
-                            .addComponent(jLabel5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
-                            .addComponent(namaBarangTextField2))
-                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addGap(97, 97, 97)
                         .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                            .addComponent(jLabel8)
-                            .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 179, javax.swing.GroupLayout.PREFERRED_SIZE))
-                        .addGap(6, 6, 6)))
+                            .addGroup(layout.createSequentialGroup()
+                                .addComponent(jLabel19, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addGap(0, 0, Short.MAX_VALUE))
+                            .addGroup(layout.createSequentialGroup()
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                        .addComponent(highField1)
+                                        .addComponent(lowField1, javax.swing.GroupLayout.DEFAULT_SIZE, 100, Short.MAX_VALUE))
+                                    .addComponent(jLabel20, javax.swing.GroupLayout.PREFERRED_SIZE, 43, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                                    .addComponent(jLabel5, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                    .addComponent(namaBarangTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 176, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGap(78, 78, 78)
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(jTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                    .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, 100, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGap(167, 167, 167)
+                                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                    .addComponent(jLabel8)
+                                    .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 179, javax.swing.GroupLayout.PREFERRED_SIZE))
+                                .addGap(6, 6, 6)))))
                 .addGap(19, 19, 19))
         );
         layout.setVerticalGroup(
@@ -1027,19 +1062,34 @@ Runnable runnable3 = new Runnable(){
                         .addComponent(searchButton, javax.swing.GroupLayout.DEFAULT_SIZE, 34, Short.MAX_VALUE)
                         .addComponent(resetButton, javax.swing.GroupLayout.DEFAULT_SIZE, 34, Short.MAX_VALUE)))
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 321, Short.MAX_VALUE)
-                .addGap(18, 18, 18)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                        .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
-                    .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE))
+                .addComponent(jScrollPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 309, Short.MAX_VALUE)
                 .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
-                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(namaBarangTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                    .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
-                        .addComponent(namaBarangTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
-                        .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                .addComponent(jLabel19)
+                .addGap(4, 4, 4)
+                .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING, false)
+                    .addGroup(layout.createSequentialGroup()
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                            .addComponent(jLabel8, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
+                            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
+                                .addComponent(jLabel2, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addComponent(highField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)))
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.TRAILING, false)
+                            .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
+                                .addComponent(namaBarangTextField, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)
+                                .addComponent(namaBarangTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE))
+                            .addGroup(layout.createSequentialGroup()
+                                .addComponent(jLabel20)
+                                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                                .addComponent(lowField1, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))))
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(jTextField3, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                        .addComponent(jTextField4, javax.swing.GroupLayout.PREFERRED_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.PREFERRED_SIZE))
+                    .addGroup(layout.createSequentialGroup()
+                        .addComponent(jLabel5, javax.swing.GroupLayout.PREFERRED_SIZE, 23, javax.swing.GroupLayout.PREFERRED_SIZE)
+                        .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED)
+                        .addComponent(namaBarangTextField2, javax.swing.GroupLayout.PREFERRED_SIZE, 40, javax.swing.GroupLayout.PREFERRED_SIZE)))
                 .addGap(18, 18, 18)
                 .addComponent(exportButton, javax.swing.GroupLayout.PREFERRED_SIZE, 38, javax.swing.GroupLayout.PREFERRED_SIZE)
                 .addGap(22, 22, 22))
@@ -1274,6 +1324,7 @@ Runnable runnable3 = new Runnable(){
     private javax.swing.JLabel grossTextField;
     private javax.swing.JLabel grossTextField2;
     private javax.swing.JLabel grossTextField3;
+    private javax.swing.JTextField highField1;
     private javax.swing.JButton jButton2;
     private javax.swing.JButton jButton3;
     private javax.swing.JButton jButton4;
@@ -1288,7 +1339,9 @@ Runnable runnable3 = new Runnable(){
     private javax.swing.JLabel jLabel16;
     private javax.swing.JLabel jLabel17;
     private javax.swing.JLabel jLabel18;
+    private javax.swing.JLabel jLabel19;
     private javax.swing.JLabel jLabel2;
+    private javax.swing.JLabel jLabel20;
     private javax.swing.JLabel jLabel3;
     private javax.swing.JLabel jLabel4;
     private javax.swing.JLabel jLabel5;
@@ -1302,6 +1355,9 @@ Runnable runnable3 = new Runnable(){
     private javax.swing.JSeparator jSeparator1;
     private javax.swing.JSeparator jSeparator2;
     private javax.swing.JTable jTable1;
+    private javax.swing.JTextField jTextField3;
+    private javax.swing.JTextField jTextField4;
+    private javax.swing.JTextField lowField1;
     private javax.swing.JTextField namaBarangTextField;
     private javax.swing.JTextField namaBarangTextField2;
     private javax.swing.JTextField namaBarangTextField3;
