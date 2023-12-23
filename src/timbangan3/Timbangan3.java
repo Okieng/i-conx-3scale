@@ -26,8 +26,8 @@ public class Timbangan3 {
         } catch (ClassNotFoundException | InstantiationException | IllegalAccessException | javax.swing.UnsupportedLookAndFeelException ex) {
             java.util.logging.Logger.getLogger(Timbangan3.class.getName()).log(java.util.logging.Level.SEVERE, null, ex);
         }
-        LoginFrame loginFrame = new LoginFrame();
-        loginFrame.setVisible(true);
+        MainFrame mainFrame = new MainFrame();
+        mainFrame.setVisible(true);
     }
     
 }
